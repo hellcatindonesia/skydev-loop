@@ -1,0 +1,61 @@
+name: VISIT LOOP — loop kunjungan simpan-sesi (GitHub akun ke-2)
+
+# Loop kunjungan UGC varian SIMPAN-SESI (2026-11-15). Terbukti oleh probe
+# kirim-ulang (run 43664052491 di skydev-v3): counter SkyDev 351 -> 357
+# = +6 — tiap kirim ulang rangkaian init/'C' di SATU sesi TCP dihitung
+# sebagai kunjungan baru. Jadi 1 bot = 1 login + 1 sesi, lalu loop
+# kirim rangkaian (init activity + SendDeviceId + 'C' spawn) tiap
+# `gap` detik sampai durasi habis. Reconnect otomatis bila sesi putus.
+# Bot diambil dari panel (RPC get_fresh_bots[_part]) TANPA tulis history
+# — bot tetap fresh untuk orderan. Repo ini jalan di akun GitHub ke-2
+# (hellcatindonesia) agar runner akun utama tidak terganggu orderan.
+# Counter kunjungan HANYA bisa dicek Bartes di game (builder-side).
+# TIDAK kirim AcknowledgeMilestone. JANGAN login sebagai SkyDev.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      bots:
+        description: "Total bot (default 20 pilot)"
+        required: false
+        default: "20"
+      duration_min:
+        description: "Durasi menit (default 30 pilot)"
+        required: false
+        default: "30"
+      gap:
+        description: "Jeda antar kiriman per bot, detik (default 2)"
+        required: false
+        default: "2"
+      runners:
+        description: 'JSON list index runner, mis. [0] atau [0,1,2,3,4,5,6,7]'
+        required: false
+        default: "[0]"
+      runner_count:
+        description: "Jumlah runner (harus sama dgn panjang runners)"
+        required: false
+        default: "1"
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      matrix:
+        runner: ${{ fromJSON(inputs.runners) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run visit loop
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python -u visit_loop.py --bots "${{ inputs.bots }}" --partisi "${{ matrix.runner }}" --jumlah-partisi "${{ inputs.runner_count }}" --duration-min "${{ inputs.duration_min }}" --gap "${{ inputs.gap }}"
