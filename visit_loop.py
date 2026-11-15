@@ -207,6 +207,8 @@ def run_bot(bot, activity_id, target_user_id, end_time, gap,
     password = bot.get("password") or ""
     device_id = bot.get("device_id") or ""
     time.sleep(random.uniform(0, 2))
+    with lock:
+        stats["active"] = stats.get("active", 0) + 1
     sends = 0
     reconnects = 0
     errors = {}
@@ -289,6 +291,7 @@ def run_bot(bot, activity_id, target_user_id, end_time, gap,
         stats["per_bot"][tag] = {"sends": sends,
                                  "reconnects": reconnects,
                                  "errors": errors}
+        stats["active"] = stats.get("active", 0) - 1
     return sends
 
 
@@ -321,7 +324,7 @@ def main():
         return 1
 
     end_time = time.time() + args.duration_min * 60
-    stats = {"sends_total": 0, "per_bot": {}}
+    stats = {"sends_total": 0, "per_bot": {}, "active": 0}
     lock = threading.Lock()
     login_sem = threading.Semaphore(5)
     t0 = time.time()
@@ -334,7 +337,7 @@ def main():
             elapsed_h = max((time.time() - t0) / 3600, 1e-6)
             print(f"[=] STAT: kiriman={total} laju="
                   f"{total / elapsed_h:.0f}/jam bot_aktif="
-                  f"{len(stats['per_bot'])}/{len(bots)}", flush=True)
+                  f"{stats.get('active', 0)}/{len(bots)}", flush=True)
 
     printer = threading.Thread(target=stats_printer, daemon=True)
     printer.start()
