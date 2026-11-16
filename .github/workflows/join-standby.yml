@@ -1,0 +1,51 @@
+name: JOIN UUID STANDBY — 1 bot bernama join ke UUID target (GitHub akun ke-2)
+
+# Eksperimen Bartes 2026-11-17: 1 bot bernama join ke UUID SkyDev via
+# destinationUserId, lalu standby online supaya Bartes cek di game
+# apakah bot muncul di sampingnya. Jalan di akun GitHub ke-2
+# (hellcatindonesia) agar runner akun utama tidak terganggu orderan.
+# Pola TERBUKTI (visit_loop.py / JOIN-NECESSITY DIAG v3): alokasi
+# /lobby/allocation + destinationUserId -> server tempatkan bot di room
+# target tanpa JoinRoom dan tanpa pertemanan. Di Plaza server kirim
+# RoomUserUpdate jadi bot kelihatan; di activity bot join tapi tidak
+# tampil. Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot bernama"
+        required: true
+      password:
+        description: "Password bot bernama"
+        required: true
+      device_id:
+        description: "Device ID bot bernama"
+        required: true
+      bot_name:
+        description: "Nama bot (Nama#Kode) untuk laporan"
+        required: true
+      target_user_id:
+        description: "UUID target (default SkyDev)"
+        required: false
+        default: "aae2efe1-1abb-48c2-8799-ea192692a49c"
+      duration_min:
+        description: "Durasi standby menit (default 30)"
+        required: false
+        default: "30"
+
+jobs:
+  join-standby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run join UUID standby
+        run: |
+          python -u join_uuid_standby.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --bot-name "${{ inputs.bot_name }}" --target-user-id "${{ inputs.target_user_id }}" --duration-min "${{ inputs.duration_min }}"
