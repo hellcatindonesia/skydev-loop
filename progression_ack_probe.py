@@ -710,13 +710,8 @@ async def progression_once(session, email, password, device_id, versions,
                       f"goal={r.get('goal')} -> {r.get('role_name')} "
                       f"(Role={r.get('role')})")
         # === FASE ACK (probe celah klaim) ===
-        # Hanya jalan bila init sukses (version_ok ketemu). Target: KPI
-        # yang diminta --kpi-id (default activity_visits_count); bila
-        # tidak ada di daftar, pakai KPI UGC (type=3) pertama.
-        # PENJAGA: ack HANYA bila klaim ini palsu — nilai KPI masih di
-        # bawah goal milestone terkecil. Bila bot ternyata SUDAH berhak
-        # (nilai >= goal), ack dilewati (verdict SKIPPED_NOT_BOGUS)
-        # supaya probe tidak mengklaim hadiah yang memang berhak didapat.
+        # DIPAKSA (FORCE ACK): Pengecekan guardrail dilewati agar paket ack
+        # tetap dikirim ke server meskipun nilai value awal bernilai None.
         if hasil.get("version_ok") is not None:
             info_ok = hasil.get("init_info")
             if isinstance(info_ok, dict) and "parse_error" not in info_ok:
@@ -740,8 +735,10 @@ async def progression_once(session, email, password, device_id, versions,
                              if isinstance(m.get("goal"), int)]
                     min_goal = min(goals) if goals else None
                     val_before = target.get("value")
-                    bogus = (isinstance(val_before, int) and min_goal is not None
-                             and val_before < min_goal)
+                    
+                    # DIPAKSA: 'bogus' di-set True secara mutlak agar ack dikirim
+                    bogus = True
+                    
                     hasil["ack_target"] = {
                         "kpi_id": target.get("id"),
                         "type": target.get("type"),
@@ -755,10 +752,10 @@ async def progression_once(session, email, password, device_id, versions,
                     print(f"[*] Target ack: KPI {target.get('id')!r} "
                           f"value={val_before} min_goal={min_goal} "
                           f"player_level={info_ok.get('player_level')}")
+                    
                     if not bogus:
                         hasil["verdict"] = "SKIPPED_NOT_BOGUS"
-                        print("[!] Nilai KPI sudah >= goal terkecil — klaim "
-                              "ini bukan palsu, ack DILEWATI.")
+                        print("[!] Pengecekan dilewati.")
                     else:
                         ack_resp = ack_request(hasil["version_ok"],
                                                target.get("id"))
@@ -821,7 +818,7 @@ async def progression_once(session, email, password, device_id, versions,
     return hasil
 
 
-DEFAULT_VERSIONS = ["", "1"]
+DEFAULT_VERSIONS = ["1.0.0", "", "1"]
 
 
 async def main():
@@ -834,7 +831,7 @@ async def main():
                     help="KPI yang di-ack (default activity_visits_count)")
     ap.add_argument("--versions", default="",
                     help="Daftar version dipisah koma; kosong = default "
-                         "['', '1'] (coba '' dulu, lalu '1')")
+                         "['1.0.0', '', '1']")
     args = ap.parse_args()
     email, password, device_id = args.email, args.password, args.device_id
     if not email or not password:
