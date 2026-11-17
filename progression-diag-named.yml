@@ -1,0 +1,33 @@
+name: DIAG Progression — diagnosis mendapatkan KPI 1 bot bernama
+
+# Diagnosis KPI (2026-11-17, Bartes): 1 bot bernama fresh dari panel
+# membaca daftar KPI + level dari server (GetInitializationInfo saja).
+# BACA SAJA — script ini TIDAK mengirim klaim milestone apa pun.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Daftar progression_version dipisah koma (kosong = default 1.0.0)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Progression diagnosis
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python -u progression_diag_named.py --versions "${{ inputs.versions }}"

@@ -603,7 +603,7 @@ async def progression_once(session, email, password, device_id, versions):
     return hasil
 
 
-DEFAULT_VERSIONS = ["", "1"]
+DEFAULT_VERSIONS = ["1.0.0"]
 
 
 async def main():
