@@ -101,6 +101,47 @@ def do_search(sock, name):
     return None
 
 
+def search_with_fallbacks(sock, gsid, name):
+    """Search dengan rantai fallback lookup_once (lookup_uuid.py):
+    langsung -> tunggu 6 dtk + ulang -> join room + ulang ->
+    friends-kosong + ulang. Kembalikan dict hasil atau None."""
+    hit = do_search(sock, name)
+    if hit is None:
+        print("[*] Search langsung kosong — tunggu 6 dtk lalu search ulang.")
+        L.read_frames(sock, 6)
+        hit = do_search(sock, name)
+    if hit is None:
+        print("[*] Search masih kosong — fallback: join lalu search lagi.")
+        resp, closed, _, _ = L.read_until(
+            sock, lambda fr: L.scan_login_window(fr)[1] is not None, 5)
+        tbugv, room = L.scan_login_window(resp)
+        print(f"[*] Login: tbugv={'YA' if tbugv else 'tidak'}, "
+              f"auto-join={'room ' + str(room) if room is not None else 'tidak'}")
+        if not closed:
+            for p in resp:
+                dec = L.decode_search_result(p)
+                if dec is not None and dec["success"] and dec["uuid"]:
+                    hit = dec
+                    break
+            if hit is None:
+                if room is None:
+                    room = L.tcp_join_only(sock, gsid)
+                if room is not None:
+                    print(f"[+] Bergabung room {room}.")
+                    hit = do_search(sock, name)
+                else:
+                    print("[!] Join gagal di instance ini.")
+    if hit is None:
+        print("[*] Search masih kosong — fallback: friends-kosong lalu search lagi.")
+        try:
+            sock.sendall(L.build_room_event_varint("friends", b""))
+            L.read_frames(sock, 6)
+            hit = do_search(sock, name)
+        except Exception:
+            pass
+    return hit
+
+
 async def main():
     L.apply_panel_versions()
     ap = argparse.ArgumentParser()
@@ -174,25 +215,16 @@ async def main():
         # Kontrol dulu: search nama yang PASTI ada (SkyDev). Bila kontrol
         # saja tidak ketemu, berarti search-nya yang rusak, bukan namanya.
         print(f"[*] Kontrol, cari: {args.control_name} ...")
-        hasil["found_control"] = do_search(sock, args.control_name)
-        if hasil["found_control"] is None:
-            print("[*] Search kontrol kosong — tunggu 6 dtk lalu search ulang.")
-            L.read_frames(sock, 6)
-            hasil["found_control"] = do_search(sock, args.control_name)
+        hasil["found_control"] = search_with_fallbacks(
+            sock, alloc.get("gameServerId", ""), args.control_name)
         time.sleep(1)
         print(f"[*] Cari: {args.name2} ...")
-        hasil["found2"] = do_search(sock, args.name2)
-        if hasil["found2"] is None:
-            print("[*] Search langsung kosong — tunggu 6 dtk lalu search ulang.")
-            L.read_frames(sock, 6)
-            hasil["found2"] = do_search(sock, args.name2)
+        hasil["found2"] = search_with_fallbacks(
+            sock, alloc.get("gameServerId", ""), args.name2)
         time.sleep(1)
         print(f"[*] Cari: {args.name1} ...")
-        hasil["found1"] = do_search(sock, args.name1)
-        if hasil["found1"] is None:
-            print("[*] Search langsung kosong — tunggu 6 dtk lalu search ulang.")
-            L.read_frames(sock, 6)
-            hasil["found1"] = do_search(sock, args.name1)
+        hasil["found1"] = search_with_fallbacks(
+            sock, alloc.get("gameServerId", ""), args.name1)
         try:
             sock.close()
         except Exception:
