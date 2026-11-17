@@ -1,0 +1,41 @@
+name: DIAG Verifikasi Rename — cek nama menempel via search
+
+# Verifikasi independen hasil rename dua kali (run 44097453509):
+# cari "TesNama2" dan "TesNama1" lewat SearchFriend dan lihat UUID
+# yang kembali. BACA SAJA — tidak mengubah nama apa pun.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      name1:
+        description: "Nama pertama yang dicari"
+        required: false
+        default: "TesNama1"
+      name2:
+        description: "Nama kedua yang dicari"
+        required: false
+        default: "TesNama2"
+      uuid:
+        description: "UUID bot yang di-rename (harus cocok dengan hasil search)"
+        required: false
+        default: "ad3713eb-6d39-439e-999d-c0af4a98c7dc"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Verifikasi Rename
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python -u verify_rename_diag.py --name1 "${{ inputs.name1 }}" --name2 "${{ inputs.name2 }}" --uuid "${{ inputs.uuid }}"
