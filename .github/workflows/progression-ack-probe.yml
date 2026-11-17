@@ -1,0 +1,39 @@
+name: DIAG Progression ACK — klaim KPI palsu 1 bot bernama
+
+# Probe celah klaim Progression (2026-11-17, Bartes): 1 bot bernama fresh
+# dari panel (RPC get_fresh_named_bots) mengirim SATU AcknowledgeMilestone
+# palsu untuk KPI activity_visits_count (nilai 0, milestone 1 juta).
+# Penjaga di script: ack hanya bila klaim palsu (nilai < goal terkecil).
+# TIDAK kirim ValidateMissingRewards / AcknowledgeStackedLevelUp.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      kpi_id:
+        description: "KPI yang di-ack"
+        required: false
+        default: "activity_visits_count"
+      versions:
+        description: "Daftar progression_version dipisah koma (kosong = default '', lalu '1')"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Progression ACK probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python -u progression_ack_probe.py --kpi-id "${{ inputs.kpi_id }}" --versions "${{ inputs.versions }}"
