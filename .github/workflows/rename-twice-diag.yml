@@ -1,0 +1,38 @@
+name: DIAG Rename Dua Kali — tes ganti nama gratis
+
+# Diagnosis ganti nama (2026-11-17, Bartes): 1 bot TANPA NAMA fresh
+# ganti nama DUA KALI lewat UpdateNickname langsung (tanpa purchase
+# flow beli offer "change_nickname"). Rename #1 harusnya gratis,
+# rename #2 yang diuji: gratis juga / bayar / ditolak server.
+# BUKAN pkxdshop. Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      name1:
+        description: "Nama pertama (maks 10 karakter, Latin+angka)"
+        required: false
+        default: "TesNama1"
+      name2:
+        description: "Nama kedua (maks 10 karakter, Latin+angka, beda dari nama pertama)"
+        required: false
+        default: "TesNama2"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Rename Dua Kali diagnosis
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python -u rename_twice_diag.py --name1 "${{ inputs.name1 }}" --name2 "${{ inputs.name2 }}"
