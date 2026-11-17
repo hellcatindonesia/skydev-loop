@@ -19,6 +19,18 @@ on:
         description: "UUID bot yang di-rename (harus cocok dengan hasil search)"
         required: false
         default: "ad3713eb-6d39-439e-999d-c0af4a98c7dc"
+      exclude-email:
+        description: "Email bot yang di-rename (jangan dipakai sebagai pencari — bot tidak boleh mencari namanya sendiri)"
+        required: false
+        default: "g43dtt893wuk@outlook.com"
+      control-name:
+        description: "Nama kontrol yang pasti ada (untuk memastikan search berfungsi)"
+        required: false
+        default: "SkyDev"
+      control-uuid:
+        description: "UUID yang diharapkan dari nama kontrol"
+        required: false
+        default: "aae2efe1-1abb-48c2-8799-ea192692a49c"
 
 jobs:
   diag:
@@ -38,4 +50,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          python -u verify_rename_diag.py --name1 "${{ inputs.name1 }}" --name2 "${{ inputs.name2 }}" --uuid "${{ inputs.uuid }}"
+          python -u verify_rename_diag.py --name1 "${{ inputs.name1 }}" --name2 "${{ inputs.name2 }}" --uuid "${{ inputs.uuid }}" --exclude-email "${{ inputs.exclude-email }}" --control-name "${{ inputs.control-name }}" --control-uuid "${{ inputs.control-uuid }}"
