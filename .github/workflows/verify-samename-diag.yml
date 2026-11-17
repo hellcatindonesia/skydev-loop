@@ -1,0 +1,38 @@
+name: DIAG Verifikasi Nama Sama — cek rename menempel
+
+# Verifikasi rename dua kali (run 44097453509): login sebagai bot yang
+# di-rename, kirim UpdateNickname('TesNama2') LAGI. Bila server menolak
+# karena nama sama, berarti TesNama2 memang sudah menempel di server.
+# Bila server menerima lagi, berarti rename #2 tadi tidak menempel.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot yang di-rename"
+        required: false
+        default: "g43dtt893wuk@outlook.com"
+      name:
+        description: "Nama yang dites ulang (harus sama dengan rename #2)"
+        required: false
+        default: "TesNama2"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Verifikasi Nama Sama
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python -u verify_samename_diag.py --email "${{ inputs.email }}" --name "${{ inputs.name }}"
