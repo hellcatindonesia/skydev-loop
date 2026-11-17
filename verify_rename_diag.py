@@ -42,8 +42,11 @@ def parse_gsid(gsid):
     return server, room
 
 
-def fetch_unnamed_bot(supabase_url, supabase_key, limit=1):
-    """Ambil 1 bot tanpa nama fresh dari panel via RPC get_fresh_bots."""
+def fetch_unnamed_bot(supabase_url, supabase_key, exclude_email="", limit=5):
+    """Ambil 1 bot tanpa nama fresh dari panel via RPC get_fresh_bots.
+    Ambil beberapa lalu pilih yang emailnya BUKAN exclude_email — bot
+    TIDAK BOLEH mencari namanya sendiri (search kemungkinan tidak
+    mengembalikan diri sendiri, hasil jadi tidak bisa disimpulkan)."""
     payload = {"p_target_uuid": SKYDEV_UUID, "p_limit": limit}
     req = urllib.request.Request(
         f"{supabase_url}/rest/v1/rpc/get_fresh_bots",
@@ -60,10 +63,13 @@ def fetch_unnamed_bot(supabase_url, supabase_key, limit=1):
     if not isinstance(data, list) or not data:
         print("[-] RPC get_fresh_bots kosong.")
         return None
-    bot = data[0]
-    print(f"[+] Bot pencari: {bot.get('email')} "
-          f"(device_id {bot.get('device_id')})")
-    return bot
+    for bot in data:
+        if (bot.get("email") or "") != exclude_email:
+            print(f"[+] Bot pencari: {bot.get('email')} "
+                  f"(device_id {bot.get('device_id')})")
+            return bot
+    print("[-] Semua bot yang dikembalikan adalah bot yang di-rename.")
+    return None
 
 
 def do_search(sock, name):
@@ -105,10 +111,17 @@ async def main():
     ap.add_argument("--name2", default=os.getenv("VERIFY_NAME2", "TesNama2"))
     ap.add_argument("--uuid", default=os.getenv(
         "VERIFY_UUID", "ad3713eb-6d39-439e-999d-c0af4a98c7dc"))
+    ap.add_argument("--exclude-email", default=os.getenv(
+        "VERIFY_EXCLUDE_EMAIL", "g43dtt893wuk@outlook.com"))
+    ap.add_argument("--control-name", default=os.getenv(
+        "VERIFY_CONTROL_NAME", "SkyDev"))
+    ap.add_argument("--control-uuid", default=os.getenv(
+        "VERIFY_CONTROL_UUID", "aae2efe1-1abb-48c2-8799-ea192692a49c"))
     args = ap.parse_args()
     if not args.email or not args.password:
         bot = fetch_unnamed_bot(os.getenv("SUPABASE_URL", ""),
-                                os.getenv("SUPABASE_SERVICE_KEY", ""))
+                                os.getenv("SUPABASE_SERVICE_KEY", ""),
+                                exclude_email=args.exclude_email)
         if not bot or not bot.get("email") or not bot.get("password"):
             print("[!] tidak ada bot tanpa nama fresh.")
             return 1
@@ -120,7 +133,9 @@ async def main():
 
     hasil = {"searcher": args.email, "name1": args.name1,
              "name2": args.name2, "expected_uuid": args.uuid,
-             "found1": None, "found2": None, "verdict": "UNKNOWN"}
+             "control_name": args.control_name,
+             "found_control": None, "found1": None, "found2": None,
+             "verdict": "UNKNOWN"}
     async with L.AsyncSession(impersonate="chrome110",
                               verify=False) as session:
         user_jwt, alloc = await L.login_and_allocate(
@@ -156,6 +171,15 @@ async def main():
             print("VERIFY_JSON:" + json.dumps(hasil, separators=(",", ":")))
             return 1
         time.sleep(1)
+        # Kontrol dulu: search nama yang PASTI ada (SkyDev). Bila kontrol
+        # saja tidak ketemu, berarti search-nya yang rusak, bukan namanya.
+        print(f"[*] Kontrol, cari: {args.control_name} ...")
+        hasil["found_control"] = do_search(sock, args.control_name)
+        if hasil["found_control"] is None:
+            print("[*] Search kontrol kosong — tunggu 6 dtk lalu search ulang.")
+            L.read_frames(sock, 6)
+            hasil["found_control"] = do_search(sock, args.control_name)
+        time.sleep(1)
         print(f"[*] Cari: {args.name2} ...")
         hasil["found2"] = do_search(sock, args.name2)
         if hasil["found2"] is None:
@@ -176,9 +200,13 @@ async def main():
 
     f1 = hasil["found1"] or {}
     f2 = hasil["found2"] or {}
+    fc = hasil["found_control"] or {}
     m1 = f1.get("uuid") == args.uuid
     m2 = f2.get("uuid") == args.uuid
-    if m2 and not m1:
+    mc = fc.get("uuid") == args.control_uuid
+    if not mc:
+        hasil["verdict"] = "SEARCH_RUSAK"
+    elif m2 and not m1:
         hasil["verdict"] = "NAMA2_MENEMPEL"
     elif m1 and not m2:
         hasil["verdict"] = "NAMA1_MASIH"
@@ -187,7 +215,8 @@ async def main():
     else:
         hasil["verdict"] = "CAMPURAN"
     print("========== HASIL VERIFIKASI RENAME ==========")
-    print(f"Cari {args.name2!r}: {f2}  Cari {args.name1!r}: {f1}")
+    print(f"Kontrol {args.control_name!r}: {fc} "
+          f"Cari {args.name2!r}: {f2}  Cari {args.name1!r}: {f1}")
     print(f"VERDICT: {hasil['verdict']}")
     print("============================================")
     print("VERIFY_JSON:" + json.dumps(hasil, separators=(",", ":")))
