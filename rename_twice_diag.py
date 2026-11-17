@@ -287,13 +287,18 @@ async def rename_twice(session, email, password, device_id, name1, name2):
 
     r1 = hasil["rename1"]
     r2 = hasil["rename2"]
-    s1 = (r1.get("spent") or {}).get("gems", 0) + \
-        (r1.get("spent") or {}).get("coins", 0)
-    s2 = (r2.get("spent") or {}).get("gems", 0) + \
-        (r2.get("spent") or {}).get("coins", 0)
+    # KOREKSI 2026-11-17: Spent=None berarti server TIDAK MENGIRIM field
+    # Spent — BUKAN Spent=0. Jangan klaim gratis dari field yang tidak ada.
+    s1 = r1.get("spent")
+    s2 = r2.get("spent")
     if r1.get("success") and r2.get("success"):
-        hasil["verdict"] = ("GRATIS_KEDUANYA" if s1 == 0 and s2 == 0
-                            else "KEDUA_BAYAR")
+        if s1 is None or s2 is None:
+            hasil["verdict"] = "SPENT_TIDAK_DIKIRIM"
+        else:
+            tot1 = s1.get("gems", 0) + s1.get("coins", 0)
+            tot2 = s2.get("gems", 0) + s2.get("coins", 0)
+            hasil["verdict"] = ("GRATIS_KEDUANYA" if tot1 == 0 and tot2 == 0
+                                else "KEDUA_BAYAR")
     elif r1.get("success") and not r2.get("success"):
         hasil["verdict"] = "KEDUA_DITOLAK"
     else:
