@@ -1,0 +1,69 @@
+name: DIAG UGC Fetch — ambil TerrainData world (read-only) 1 bot tes
+
+# Probe UGC fetch read-only (2026-11-18, Bartes): bot pkxdshop
+# mengunjungi world UGC lalu membaca SELURUH data world-nya
+# (TerrainData: PlacedItems + Rooms + TerrainType) — langkah 1
+# rencana copy builder antar akun Bartes sendiri.
+# TIDAK ADA pembuatan draft, update draft, publish, atau penulisan
+# apa pun ke akun mana pun — hanya login + join + baca.
+# Wire format (TERBUKTI via disassembly libil2cpp.so lama):
+# - Request: RoomEvent "activity/get", payload KOSONG
+#   (ToxicBirdServer.EMPTY_REQUEST = new byte[0], dibuktikan .cctor).
+# - Respons: RoomEvent "get-activity" = protobuf GetActivityResponse
+#   f1 Data (ActivityData: f1 OwnerId, f2 ActivityId, f3 PublicationId,
+#   f4 Type=TerrainType, f5 Items repeated ActivityItem, f6 Rooms
+#   repeated ActivityRoom). ActivityItem: f1 Id, f2 Position Vector3,
+#   f3 Rotation Vector3, f4 ColorId, f5 EquippedItems repeated int32.
+#   ActivityRoom: f1 Floor, f2 Walls repeated int32.
+#   Vector3: f1 X, f2 Y, f3 Z (float fixed32).
+# - Error: RoomEvent "get-activity-error".
+# Alokasi activity pola visit_loop.py (3 percobaan:
+# /lobby/activity/allocation, /lobby/allocation+activityId,
+# /lobby/allocation+destinationUserId bila target user id diisi).
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      activity_id:
+        description: "Activity ID world UGC yang diambil datanya"
+        required: false
+        default: "0d2522bd-b29a-4809-af63-5f72263d2deb"
+      target_user_id:
+        description: "User ID pemilik world (opsional, fallback alokasi)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run UGC fetch probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+          DB_ACTIVITY_ID: ${{ inputs.activity_id }}
+          DB_TARGET_USER_ID: ${{ inputs.target_user_id }}
+        run: |
+          python -u ugc_fetch_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --activity-id "${{ inputs.activity_id }}" --target-user-id "${{ inputs.target_user_id }}"
