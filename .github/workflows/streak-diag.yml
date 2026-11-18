@@ -1,0 +1,61 @@
+name: DIAG Daily Streak — status + klaim 1x 1 bot tes
+
+# Probe Daily Streak (2026-11-18, Bartes): bot pkxdshop membaca status
+# streak harian, lalu klaim sekali bila belum diklaim hari ini.
+# Mekanik server ToxicBirdDailyStreakMechanic, RoomEvent TERPISAH per
+# aksi, reliable=1 — pola identik dengan probe "fw" (Fortune Wheel)
+# dan "daily_box".
+#   STRKS = cek status, STRKR = klaim, STRKF = freeze, STRKFR = reset.
+#   SEMUA request payload KOSONG (0 byte).
+# Respons status: f1 CurrentStreak, f2 StreakInformations[] (per
+# periode: f1 StreakPeriod, f2 StreakOffset, f3 StreakRangeStart,
+# f4 LootBoxIds[], f5 PetEggId[]), f3 CollectedReward, f4 LostStreak,
+# f5 CanFreezeStreak, f6 FreezeDaysCount.
+# Respons klaim: f1 CurrentStreak, f2 LootBoxRewards[] (tiap: f1
+# LootBoxId, f2 LootBoxItems[]), f3 PetEggRewards[], f4 Wallet (Money
+# f1=koin, f2=gems). TIDAK ADA flag Successful — sukses dideteksi dari
+# isi (hadiah / wallet / CollectedReward false -> true).
+# Desain probe (daily_streak_analysis.md §7.3): STRKS -> bila
+# CollectedReward=false, kirim STRKR SEKALI -> STRKS lagi (verifikasi).
+# TIDAK kirim STRKR kedua di hari yang sama pada probe pertama.
+# TIDAK kirim STRKF / STRKFR di probe ini. Bila CollectedReward sudah
+# true saat status pertama: JANGAN klaim.
+# TIDAK perlu destinationUserId (mekanik terdaftar di ToxicBirdClient,
+# bukan room); TIDAK kirim JoinRoom; Bartes tidak perlu online.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Daily Streak probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u streak_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
