@@ -1,0 +1,48 @@
+{
+ "activity_id": "06f9b12e-a420-4c04-be12-356d57970284",
+ "owner_id": null,
+ "publication_id": null,
+ "terrain_type": 4534,
+ "placed_items": [
+  {
+   "id": 552,
+   "position": {
+    "x": -52.576358795166016,
+    "y": 31.5302734375,
+    "z": 52.57634353637695
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 5319,
+   "position": {
+    "x": -50.0,
+    "y": 31.53,
+    "z": 52.58
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  }
+ ],
+ "rooms": [
+  {
+   "floor": 392,
+   "walls": []
+  },
+  {
+   "floor": 4555,
+   "walls": []
+  }
+ ]
+}
