@@ -1,0 +1,54 @@
+name: DIAG UGC Drafts — daftar draft map milik akun (read-only)
+
+# Probe daftar draft UGC (2026-11-18, Bartes): bot login lalu membaca
+# daftar DRAFT map milik akun itu (yang belum di-publish).
+# Metadata API (searchByUser) hanya menampilkan world yang sudah
+# tayang, jadi draft tidak kelihatan dari sana — daftar ini satu-
+# satunya cara menemukan ActivityId map draft.
+# TIDAK ADA pembuatan draft, update draft, publish, atau penulisan
+# apa pun — hanya login + baca daftar draft.
+# Wire format (TERBUKTI via stringliteral.json dump LAMA):
+# - Request: RoomEvent "activityDraft/list", payload KOSONG
+#   (tidak ada class ListActivityDraftsRequest di dump).
+# - Respons: RoomEvent "list-activity-drafts" = protobuf
+#   ListActivityDraftsResponse f1 Activities repeated
+#   ActivityDraftMetadata (f1 Id, f2 Name, f3 ThumbnailUrl,
+#   f4 ActivityType=TerrainType, f5 Tags repeated ActivityTag).
+# - Error: RoomEvent "list-activity-drafts-error".
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email akun (SkyDev)"
+        required: true
+      password:
+        description: "Password akun (SkyDev)"
+        required: true
+      device_id:
+        description: "Device ID (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run UGC drafts probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u ugc_drafts_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
