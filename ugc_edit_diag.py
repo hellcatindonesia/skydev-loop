@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+# DIAG edit layout UGC ke world/draft yang SUDAH ADA (tanpa create baru).
+# Dipakai untuk menyalin tata letak TROPlCAL PARADlSE ke W0RLD WAR 3
+# (activity 40c65049-38b7-4f67-ab82-9326e37f7b6a, terrain 4706, kosong)
+# karena create draft baru SELALU ditolak server
+# (DOES_NOT_POSSESS_ACTIVITY_TYPE, 6x) meski terrain sudah dibeli di
+# game — edit melewati langkah create/terrain sepenuhnya.
+#
+# Wire (dump_3, TERBUKTI):
+# - edit "activityDraft/edit" (slot 0x8900A90) -> "edit-activity-draft";
+#   EditActivityDraftRequest: f1 ActivityId string, f2 Items repeated
+#   XDActivityItem, f3 Rooms repeated XDActivityRoom, f4 StoreTreeId.
+#   TIDAK ada field terrain — terrain hanya diset saat create.
+# - Respons sukses = event "edit-activity-draft" tiba; error =
+#   "edit-activity-draft-error" (f1 ActivityDraftErrorType; 3 =
+#   MissingNeededItems bila server memvalidasi kepemilikan item).
+# - Target boleh draft ATAU world publish (W0RLD WAR 3 publish, type
+#   4706) — belum terbukti server menerima edit atas activity publish;
+#   bila ditolak, fallback-nya edit salah satu draft pkxdshop
+#   (Pulau XP / XP Arena, perlu activityId-nya dari draft list).
+# - TIDAK kirim 'C' spawn (bukan kunjungan); TIDAK publish ulang —
+#   W0RLD WAR 3 sudah publish, edit langsung mengubah world yang live.
+# - Nama world TIDAK diubah kecuali --world-name diisi.
+import argparse
+import asyncio
+import json
+import os
+import time
+
+import lookup_uuid as L
+import gift_diag as G
+import ugc_copy_diag as C
+
+BOT_USER_ID = C.BOT_USER_ID
+DEFAULT_DEVICE_ID = C.DEFAULT_DEVICE_ID
+DEFAULT_SOURCE_JSON = "ugc_fetch_5dcf211e.json"
+DEFAULT_STORE_TREE_ID = C.DEFAULT_STORE_TREE_ID
+STEP_TIMEOUT = C.STEP_TIMEOUT
+
+
+async def ugc_edit_once(session, email, password, device_id, src,
+                        target_id, store_tree_id, world_name=None):
+    hasil = {"email": email, "bot_user_id": BOT_USER_ID,
+             "source_activity_id": src.get("activity_id"),
+             "source_terrain_type": src.get("terrain_type"),
+             "target_activity_id": target_id,
+             "store_tree_id": store_tree_id,
+             "world_name": world_name,
+             "steps": {}, "error": None, "events_seen": []}
+    items = src.get("placed_items") or []
+    rooms = src.get("rooms") or []
+    print(f"[*] Target edit: {target_id}")
+    print(f"[*] Layout sumber: {len(items)} item, {len(rooms)} room "
+          f"(terrain sumber {src.get('terrain_type')}).")
+    user_jwt, alloc = await L.login_and_allocate(
+        email, password, device_id, session)
+    if not alloc:
+        hasil["error"] = "login/alokasi gagal"
+        print("[!] login/alokasi gagal.")
+        return hasil
+    host, port = L.find_host_port(alloc)
+    if not host or not port:
+        hasil["error"] = "host/port tidak ketemu di allocation"
+        print("[!] host/port tidak ketemu.")
+        return hasil
+    print(f"[+] alokasi OK: {host}:{port}")
+    sock, pid = L.tcp_connect(host, port)
+    if sock is None:
+        hasil["error"] = "TCP connect gagal"
+        print("[!] TCP connect gagal.")
+        return hasil
+    print(f"[+] Connected: playerId={pid}.")
+    try:
+        sock.sendall(L.build_login_frame(user_jwt))
+    except Exception as exc:
+        hasil["error"] = f"kirim login frame gagal: {exc}"
+        print(f"[!] kirim login frame gagal: {exc}")
+        return hasil
+    server, room = C.parse_gsid(
+        (alloc or {}).get("gameServerId", "") or "")
+    joined, via_tbugv, fr = C.wait_joined(sock, room)
+    if not joined:
+        hasil["error"] = "tidak JoinedRoom/tbugv sesudah login"
+        print("[!] tidak JoinedRoom/tbugv sesudah login.")
+        return hasil
+    print("[+] JoinedRoom/tbugv diterima.")
+    try:
+        sock.sendall(L.build_room_event_varint(
+            "init", b""))
+        sock.sendall(L.build_room_event_varint(
+            "Analytics/deviceId",
+            (device_id or DEFAULT_DEVICE_ID).encode("utf-8")))
+        print("[+] init + SendDeviceId terkirim (tanpa 'C' spawn).")
+    except Exception as exc:
+        print(f"[!] kirim init/SendDeviceId gagal: {exc}")
+
+    # 1) EDIT layout ke target.
+    payload = C.build_edit_payload(target_id, items, rooms,
+                                   store_tree_id)
+    ok, data, err = C.send_step(
+        sock, fr, C.EV_EDIT, payload, STEP_TIMEOUT,
+        hasil["events_seen"], "1/2 EDIT layout")
+    hasil["steps"]["edit"] = {"ok": ok, "error": err}
+    if not ok:
+        hasil["error"] = f"EDIT gagal: {err}"
+        return hasil
+
+    # 2) Nama (opsional — bila --world-name diisi).
+    if world_name:
+        payload = C.build_edit_name_payload(target_id, world_name)
+        ok, data, err = C.send_step(
+            sock, fr, C.EV_EDIT_NAME, payload, STEP_TIMEOUT,
+            hasil["events_seen"], "2/2 EDIT nama")
+        hasil["steps"]["edit_name"] = {"ok": ok, "error": err}
+        if not ok:
+            hasil["error"] = f"EDIT nama gagal: {err}"
+            return hasil
+    else:
+        hasil["steps"]["edit_name"] = {"ok": None,
+                                       "error": "dilewati (nama dipertahankan)"}
+        print("[*] EDIT nama dilewati (nama world dipertahankan).")
+    return hasil
+
+
+async def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--email", default=os.getenv("DB_EMAIL", ""))
+    ap.add_argument("--password", default=os.getenv("DB_PASSWORD", ""))
+    ap.add_argument("--device-id", default=os.getenv("DB_DEVICE_ID", ""))
+    ap.add_argument("--target-id", required=True,
+                    help="ActivityId world/draft tujuan edit")
+    ap.add_argument("--source-json", default=os.getenv(
+        "UGC_SOURCE_JSON", DEFAULT_SOURCE_JSON))
+    ap.add_argument("--store-tree-id", default=os.getenv(
+        "UGC_STORE_TREE_ID", DEFAULT_STORE_TREE_ID))
+    ap.add_argument("--world-name", default=os.getenv(
+        "UGC_WORLD_NAME", ""))
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+
+    try:
+        src = C.load_source(args.source_json)
+    except Exception as exc:
+        print(f"[!] JSON sumber tidak valid: {exc}")
+        return 1
+    items = src.get("placed_items") or []
+    rooms = src.get("rooms") or []
+    payload = C.build_edit_payload(
+        args.target_id, items, rooms, args.store_tree_id)
+    print("========== RENCANA EDIT (UGC EDIT DIAG) ==========")
+    print(f"Sumber: {src.get('activity_id')} "
+          f"(terrain {src.get('terrain_type')}, "
+          f"{len(items)} item, {len(rooms)} room)")
+    print(f"Target: {args.target_id}")
+    print(f"Nama baru: {args.world_name or '(dipertahankan)'}")
+    print(f"Payload EDIT ({len(payload)} B): "
+          f"{payload[:60].hex()}...")
+    print("===================================================")
+    if args.dry_run:
+        print("[*] DRY-RUN: tidak ada jaringan game, selesai.")
+        return 0
+    if not args.email or not args.password:
+        print("[!] email/password bot wajib diisi (mode live).")
+        return 1
+    L.apply_panel_versions()
+    async with L.AsyncSession(impersonate="chrome110",
+                              verify=False) as session:
+        try:
+            hasil = await ugc_edit_once(
+                session, args.email, args.password, args.device_id,
+                src, args.target_id, args.store_tree_id,
+                args.world_name or None)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            hasil = {"email": args.email, "bot_user_id": BOT_USER_ID,
+                     "source_activity_id": src.get("activity_id"),
+                     "source_terrain_type": src.get("terrain_type"),
+                     "target_activity_id": args.target_id,
+                     "store_tree_id": args.store_tree_id,
+                     "world_name": args.world_name or None,
+                     "steps": {}, "events_seen": [],
+                     "error": f"{type(exc).__name__}: {exc}"}
+            print(f"[!] ugc_edit_once gagal: "
+                  f"{type(exc).__name__}: {exc}")
+    print("")
+    print("========== HASIL EDIT UGC ==========")
+    print(f"Target: {hasil.get('target_activity_id')}")
+    for step, res in (hasil.get("steps") or {}).items():
+        print(f"  {step}: ok={res.get('ok')} "
+              f"error={res.get('error')}")
+    if hasil.get("error"):
+        print(f"Error: {hasil.get('error')}")
+    print(f"Events terlihat: {hasil.get('events_seen')}")
+    print("====================================")
+    print("UGCEDIT_JSON:" + json.dumps(C._jsonable(hasil),
+                                       separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))
