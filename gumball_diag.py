@@ -187,22 +187,22 @@ def _str_field(field_no, value):
 
 
 def _money_str(m):
-    """Money dict {1: koin, 2: gems, 3: tiket, 4: event} -> teks ringkas."""
+    """Money dict {"1": koin, "2": gems, "3": tiket, "4": event} -> teks."""
     if not isinstance(m, dict):
         return str(m)
     parts = []
-    if m.get(1):
-        parts.append(f"{m[1]} koin")
-    if m.get(2):
-        parts.append(f"{m[2]} gems")
-    if m.get(3):
-        parts.append(f"{m[3]} tiket")
-    ev = m.get(4)
+    if m.get("1"):
+        parts.append(f"{m['1']} koin")
+    if m.get("2"):
+        parts.append(f"{m['2']} gems")
+    if m.get("3"):
+        parts.append(f"{m['3']} tiket")
+    ev = m.get("4")
     if ev:
         evs = ev if isinstance(ev, list) else [ev]
         for e in evs:
             if isinstance(e, dict):
-                parts.append(f"{e.get(2)} {e.get(1)}")
+                parts.append(f"{e.get("2")} {e.get("1")}")
     return " + ".join(parts) if parts else "gratis/0"
 
 
@@ -214,10 +214,10 @@ def parse_gumball_info(data):
         infos = infos if isinstance(infos, list) else [infos]
         for raw in infos:
             m = _jsonable(_nested(raw))
-            cap = m.get(3) if isinstance(m, dict) else None
+            cap = m.get("3") if isinstance(m, dict) else None
             machines.append({
-                "machine_id": m.get(1) if isinstance(m, dict) else None,
-                "price": m.get(2) if isinstance(m, dict) else None,
+                "machine_id": m.get("1") if isinstance(m, dict) else None,
+                "price": m.get("2") if isinstance(m, dict) else None,
                 "cap": cap if isinstance(cap, dict) else cap,
             })
     return {"event_id": d.get(1), "successful": d.get(2),
@@ -232,21 +232,21 @@ def parse_gumball_prob(data):
         raw_items = raw_items if isinstance(raw_items, list) else [raw_items]
         for raw in raw_items:
             it = _jsonable(_nested(raw))
-            loot = it.get(1) if isinstance(it, dict) else None
+            loot = it.get("1") if isinstance(it, dict) else None
             if not isinstance(loot, dict):
                 items.append({"raw": it,
-                              "probability": it.get(2)
+                              "probability": it.get("2")
                               if isinstance(it, dict) else None})
                 continue
             items.append({
-                "type": TYPE_NAMES.get(loot.get(1), loot.get(1)),
-                "id": loot.get(2),
-                "quantity": loot.get(3),
-                "money": loot.get(4),
-                "unique": loot.get(5),
-                "pet": loot.get(7),
-                "quality": QUALITY_NAMES.get(loot.get(8), loot.get(8)),
-                "probability": it.get(2),
+                "type": TYPE_NAMES.get(loot.get("1"), loot.get("1")),
+                "id": loot.get("2"),
+                "quantity": loot.get("3"),
+                "money": loot.get("4"),
+                "unique": loot.get("5"),
+                "pet": loot.get("7"),
+                "quality": QUALITY_NAMES.get(loot.get("8"), loot.get("8")),
+                "probability": it.get("2"),
             })
     return {"event_id": d.get(1), "successful": d.get(2),
             "error": d.get(3), "items": items}
@@ -371,7 +371,7 @@ async def gumball_once(session, email, password, device_id):
             cap = m.get("cap") or {}
             print(f"    - {m.get('machine_id')}: "
                   f"harga={_money_str(m.get('price'))} "
-                  f"cap max={cap.get(2)} sisa={cap.get(3)}")
+                  f"cap max={cap.get("2")} sisa={cap.get("3")}")
 
         # 2. GetProbabilityInfo per mesin (maks 10) — isi + peluang.
         for m in machines[:MAX_MACHINES_PROB]:
@@ -432,7 +432,7 @@ async def main():
     for m in (info.get("machines") or []):
         cap = m.get("cap") or {}
         print(f"  {m.get('machine_id')}: {_money_str(m.get('price'))} "
-              f"(cap {cap.get(3)}/{cap.get(2)})")
+              f"(cap {cap.get("3")}/{cap.get("2")})")
         for it in ((hasil.get("probabilities") or {}).get(
                 m.get("machine_id")) or {}).get("items", [])[:8]:
             print(f"    - {it.get('type')} id={it.get('id')} "
