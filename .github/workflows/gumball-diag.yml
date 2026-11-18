@@ -1,0 +1,64 @@
+name: DIAG Gumball — daftar mesin + isi (read-only) 1 bot tes
+
+# Probe Gumball read-only (2026-11-18, Bartes): bot pkxdshop membaca
+# daftar mesin gacha + harga + isi/peluang tiap mesin. TIDAK ADA
+# PEMBELIAN — Buy (EventId=0) TIDAK PERNAH dikirim.
+# Mekanik server ToxicBirdArcadeMachineMechanic, RoomEvent "gumball",
+# reliable=1 — pola identik dengan probe "fw", "daily_box",
+# "STRKS"/"STRKR", "daily_bonus".
+# Request (protobuf): GetInfo = GetGumballInfoRequest f1 EventId=2
+# (`08 02`); GetProbabilityInfo = GetGumballProbabilityInfoRequest
+# f1 EventId=1 + f2 MachineId string (`08 01` + `12 <len> <id>`).
+# (TERBUKTI via disassembly: SendMachineProbabilityInfoRequest
+# membangun GetGumballProbabilityInfoRequest + set_MachineId, BUKAN
+# GumballRequest — GumballRequest hanya punya f1 EventId.)
+# Respons GetInfo (GetGumballInfoResponse): f1 EventId (=2), f2
+# Successful, f3 ErrorMessage, f4 infos (repeated GumballInfo: f1
+# machineId, f2 price Money, f3 cap GumballCap {f1 timestamp, f2 max,
+# f3 remaining}). Respons Probability
+# (GetGumballProbabilityInfoResponse): f1 EventId (=1), f2 Successful,
+# f3 ErrorMessage, f4 items (repeated LootBoxItemProbabilityInfo:
+# f1 LootBoxItem {f1 type, f2 id, f3 quantity, f4 money, f5 unique,
+# f6 presentation, f7 pet, f8 quality}, f2 probability float).
+# LootBoxItemType: 0 Empty, 1 MoneyReward, 2 ItemReward, 3 PetReward,
+# 4 VehicleReward. Quality: 0 Trash, 1 Common, 2 Uncommon, 3 Rare,
+# 4 Epic, 5 Legendary.
+# TIDAK perlu destinationUserId (mekanik terdaftar di ToxicBirdClient,
+# bukan room); TIDAK kirim JoinRoom; Bartes tidak perlu online.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Gumball probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u gumball_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
