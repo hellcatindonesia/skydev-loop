@@ -1,0 +1,62 @@
+name: DIAG Live Event — event aktif (read-only) 1 bot tes
+
+# Probe Live Event read-only (2026-11-18, Bartes): bot pkxdshop
+# menanyakan event live apa saja yang sedang aktif (termasuk
+# Wandering Vendor / toko tersembunyi, LiveEventType 5) beserta jam
+# mulai/berakhirnya. TIDAK ADA PEMBELIAN.
+# Mekanik server ToxicBirdLiveEventsMechanic, RoomEvent "live_event".
+# Request: GetActiveEventsRequest, f1 EventId = GetActiveEvents = 0
+# (SATU-SATUNYA client event; proto3 menghilangkan nilai 0) ->
+# payload KOSONG (0 byte). Pola sama seperti Daily Box GetStatus dan
+# Daily Streak STRKS.
+# Respons ActiveEventsResponse: f1 EventId (=0 ActiveEventsReceived),
+# f2 Successful, f3 ErrorMessage, f4 activeEvents (repeated
+# LiveEventPayload: f1 occurrenceId, f2 type, f3 startedAt ulong,
+# f4 endAt ulong, f5 effects).
+# LiveEventType: 0 Rain, 1 Thunderstorm, 2 Snow, 3 Blizzard, 4 Mirage,
+# 5 WanderingVendor, 6 AdminAbuse, 7 Fireworks, 8 Rainbow, 9 SaveTheSeas,
+# 10 AdminTimer, 11 Windstorm.
+# TIDAK perlu destinationUserId (mekanik terdaftar di ToxicBirdClient,
+# bukan room); TIDAK kirim JoinRoom; Bartes tidak perlu online.
+# CATATAN: daftar item + harga vendor TIDAK ada di respons ini — harga
+# vendor hidup di store content (endpoint /v1/store-content dan CDN
+# game-store-data butuh sesi platform / signed URL; percobaan 2026-11-16
+# gagal 404/403). Probe ini menjawab EVENT APA SAJA yang aktif +
+# sampai jam berapa.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Live Event probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u liveevent_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
