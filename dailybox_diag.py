@@ -166,7 +166,8 @@ def parse_dailybox_collect(data):
             if reward is not None else None}
 
 
-async def dailybox_once(session, email, password, device_id):
+async def dailybox_once(session, email, password, device_id,
+                        status_only=False):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "server": "", "room": None, "player_id": None,
              "login_ok": False, "deviceid_sent": False,
@@ -277,7 +278,11 @@ async def dailybox_once(session, email, password, device_id):
             hasil["error"] = "parse status gagal"
             return hasil
 
-        # 2. Collect GRATIS — hanya bila ada kotak tersedia.
+        # 2. Collect GRATIS — hanya bila ada kotak tersedia (dan tidak
+        # --status-only).
+        if status_only:
+            print("[*] Mode --status-only: Collect TIDAK dikirim.")
+            return hasil
         avail = hasil["status"].get("available_boxes")
         if isinstance(avail, int) and avail > 0:
             print(f"[*] Ada {avail} kotak — kirim Collect gratis (tanpa iklan).")
@@ -306,6 +311,8 @@ async def main():
     ap.add_argument("--email", default=os.getenv("DB_EMAIL", ""))
     ap.add_argument("--password", default=os.getenv("DB_PASSWORD", ""))
     ap.add_argument("--device-id", default=os.getenv("DB_DEVICE_ID", ""))
+    ap.add_argument("--status-only", action="store_true",
+                    help="Hanya baca status, jangan kirim Collect")
     args = ap.parse_args()
     if not args.email or not args.password:
         print("[!] email/password bot wajib diisi.")
@@ -314,7 +321,8 @@ async def main():
                               verify=False) as session:
         try:
             hasil = await dailybox_once(
-                session, args.email, args.password, args.device_id)
+                session, args.email, args.password, args.device_id,
+                status_only=args.status_only)
         except Exception as exc:
             hasil = {"email": args.email, "bot_user_id": BOT_USER_ID,
                      "server": "", "room": None, "player_id": None,
