@@ -1,0 +1,68 @@
+name: DIAG Daily Bonus — count + klaim 1x 1 bot tes
+
+# Probe Daily Bonus (2026-11-18, Bartes): bot pkxdshop membaca count
+# bonus harian, lalu klaim sekali (gratis, tanpa iklan).
+# Mekanik server ToxicBirdDailyBonusMechanic, RoomEvent "daily_bonus",
+# reliable=1 — pola identik dengan probe "fw" (Fortune Wheel),
+# "daily_box" dan "STRKS"/"STRKR".
+# TERBUKTI via .rela.dyn (dump lama): SendGetDailyBonusCount DAN
+# SendCollectReward sama-sama mengirim RoomEvent "daily_bonus" (slot
+# statik 0x8904228, addend 0x8B3E9C8). Sub-key "A"/"B" BUKAN nama event —
+# yang membedakan count vs klaim adalah f1 EventId di protobuf.
+# Request DailyBonusRewardRequest: f1 EventId (0=CollectWithReward
+# [iklan], 1=CollectWithoutReward [gratis], 2=GetCount), f2-f6 Day1-5
+# RewardId, f7-f11 Day1-5 Ad RewardId. Byte: Count = `08 02` (+ 10
+# RewardId bila ada); Klaim gratis = `08 01` (+ 10 RewardId); Klaim
+# iklan = hanya 10 RewardId. Probe ini TIDAK pakai iklan.
+# RewardId aslinya dari Remote Config ("reward_config"), TAPI server
+# meng-echo RewardId yang ia miliki di respons count — probe mengambil
+# RewardId dari respons count lalu mengirimnya balik saat klaim.
+# Respons count (DailyBonusStatusResponse): f1 Count, f2-f6 Reward1-5,
+# f7-f11 RewardAd1-5. Count=-1 berarti bonus TIDAK tersedia (hanya
+# muncul untuk akun yang lama tidak login — koreksi Bartes 2026-11-15).
+# Respons klaim (DailyBonusRewardResponse): f1 Reward Money, f2 Items
+# (repeated int, packed), f3 Wallet Money, f4 isLootBox. TIDAK ADA
+# flag Successful — sukses dideteksi dari isi.
+# Desain probe: Count (`08 02`) -> bila Count >= 0, klaim sekali
+# (`08 01` + RewardId dari count); bila Count=-1, kirim SATU klaim
+# paksa (`08 01`) untuk melihat respons server; bila count TIDAK ada
+# respons, berhenti (jangan klaim buta).
+# TIDAK perlu destinationUserId (mekanik terdaftar di ToxicBirdClient,
+# bukan room); TIDAK kirim JoinRoom; Bartes tidak perlu online.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Daily Bonus probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u dailybonus_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
