@@ -141,9 +141,18 @@ def _str_field(fields, field):
     return v.decode("utf-8", "replace")
 
 
+def _int32(v):
+    """Varint -> int32 bertanda. Protobuf mengode int32 negatif
+    sebagai varint 64-bit (sign-extend), mis. -1 = 10 byte
+    0xFF..01 = 18446744073709551615 unsigned -> kembalikan -1."""
+    if v is None:
+        return None
+    v &= 0xFFFFFFFF
+    return v - 0x100000000 if v >= 0x80000000 else v
+
+
 def _int_field(fields, field):
-    v = _first(fields, field, 0)
-    return v
+    return _int32(_first(fields, field, 0))
 
 
 def _repeated_int(fields, field):
@@ -152,20 +161,25 @@ def _repeated_int(fields, field):
     vals = []
     for w, v in fields.get(field, []):
         if w == 0:
-            vals.append(v)
+            vals.append(_int32(v))
         elif w == 2:
             i = 0
             while i < len(v):
                 x, m = _read_varint(v, i)
                 i += m
-                vals.append(x)
+                vals.append(_int32(x))
     return vals
 
 
 def _parse_vector3(buf):
+    """Vector3 protobuf. Pesan KOSONG (0 byte) = semua komponen 0.0
+    (proto3 default) — bukan null."""
+    if not buf:
+        return {"x": 0.0, "y": 0.0, "z": 0.0}
     f = _parse_fields(buf)
-    return {"x": _first(f, 1, 5), "y": _first(f, 2, 5),
-            "z": _first(f, 3, 5)}
+    return {"x": _first(f, 1, 5) if _first(f, 1, 5) is not None else 0.0,
+            "y": _first(f, 2, 5) if _first(f, 2, 5) is not None else 0.0,
+            "z": _first(f, 3, 5) if _first(f, 3, 5) is not None else 0.0}
 
 
 def _parse_activity_item(buf):
