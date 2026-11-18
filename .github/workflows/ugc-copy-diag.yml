@@ -61,6 +61,10 @@ on:
         description: "true = hanya validasi + cetak payload, tanpa login"
         required: false
         default: "false"
+      publish:
+        description: "true = publish sesudah save; false = hanya save draft, tidak publish"
+        required: false
+        default: "true"
 
 jobs:
   diag:
@@ -89,6 +93,8 @@ jobs:
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             python -u ugc_copy_diag.py --dry-run --source-json "${{ inputs.source_json }}" --world-name "${{ inputs.world_name }}" --tags "${{ inputs.tags }}" --store-tree-id "${{ inputs.store_tree_id }}"
-          else
+          elif [ "${{ inputs.publish }}" = "true" ]; then
             python -u ugc_copy_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --source-json "${{ inputs.source_json }}" --world-name "${{ inputs.world_name }}" --tags "${{ inputs.tags }}" --store-tree-id "${{ inputs.store_tree_id }}"
+          else
+            python -u ugc_copy_diag.py --no-publish --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --source-json "${{ inputs.source_json }}" --world-name "${{ inputs.world_name }}" --tags "${{ inputs.tags }}" --store-tree-id "${{ inputs.store_tree_id }}"
           fi
