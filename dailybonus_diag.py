@@ -9,11 +9,11 @@ Latar (analisis dump_3 + disassembly libil2cpp.so lama — 2026-11-18):
   sama-sama mengirim RoomEvent "daily_bonus" (slot statik 0x8904228,
   addend 0x8B3E9C8 = "daily_bonus"). Sub-key "A"/"B" BUKAN nama event —
   yang membedakan count vs klaim adalah f1 EventId di dalam protobuf.
-- Request DailyBonusRewardRequest: f1 EventId (enum: 0=CollectWithReward
-  [iklan ditonton], 1=CollectWithoutReward [gratis, tanpa iklan],
-  2=GetCount), f2-f6 Day1-5 RewardId, f7-f11 Day1-5 Ad RewardId.
-  Byte: Count = `08 02` (+ 10 RewardId bila ada); Klaim gratis =
-  `08 01` (+ 10 RewardId); Klaim iklan = hanya 10 RewardId (f1=0).
+- Respons TIDAK datang dengan nama "daily_bonus": count dijawab di
+  RoomEvent "A" (1036 B, ~11 dtk sesudah kirim — TERBUKTI run
+  44233018387, 2026-11-18) dan klaim diduga dijawab di "B" (simetri
+  sub-key; belum terverifikasi). Jadi kirim ke "daily_bonus", tunggu
+  respons di "A" (count) / "B" (klaim), timeout 20 dtk.
   RewardId aslinya dari Remote Config ("reward_config"), TAPI server
   meng-echo RewardId yang ia miliki di respons count — jadi probe ini
   mengambil RewardId dari respons count lalu mengirimnya balik saat
@@ -30,11 +30,13 @@ Latar (analisis dump_3 + disassembly libil2cpp.so lama — 2026-11-18):
   destinationUserId, TIDAK ada syarat room/activity, Bartes tidak
   perlu online. TIDAK kirim JoinRoom. TIDAK ada varian iklan di probe
   ini (klaim selalu EventId=1 = gratis).
-- Desain probe: Count ("daily_bonus" `08 02`) -> bila Count >= 0, klaim
-  sekali ("daily_bonus" `08 01` + RewardId dari count); bila Count=-1,
-  kirim SATU klaim paksa (`08 01`, tanpa RewardId) untuk melihat respons
-  server (pola yang sama seperti Daily Box --force-collect); bila count
-  TIDAK ada respons, berhenti (jangan klaim buta).
+- Desain probe: Count ("daily_bonus" `08 02`, respons ditunggu di "A",
+  timeout 20 dtk) -> bila Count >= 0, klaim sekali ("daily_bonus"
+  `08 01` + RewardId dari count, respons ditunggu di "B"); bila
+  Count=-1, kirim SATU klaim paksa (`08 01`, tanpa RewardId) untuk
+  melihat respons server (pola yang sama seperti Daily Box
+  --force-collect); bila count TIDAK ada respons, berhenti (jangan
+  klaim buta).
 Alur: login -> alokasi sendiri -> TCP login -> tunggu jendela login
 (tbugv, maks 3 dtk) -> SendDeviceId ('Analytics/deviceId') ->
 Count -> (klaim 1x) -> cetak DAILYBONUS_JSON.
@@ -293,9 +295,11 @@ async def bonus_once(session, email, password, device_id):
                         return d
             return None
 
-        def bonus_request(label, payload, parse_fn, timeout=10):
+        def bonus_request(label, payload, resp_name, parse_fn, timeout=20):
             """Kirim RoomEvent 'daily_bonus' + tunggu respons dengan nama
-            yang sama; maks 1 kirim ulang."""
+            `resp_name` ("A" untuk count, "B" untuk klaim); maks 1
+            kirim ulang. Respons server lambat (~11 dtk), jadi timeout
+            default 20 dtk."""
             for attempt in (1, 2):
                 try:
                     sock.sendall(L.build_room_event_varint(EVENT, payload))
@@ -303,11 +307,11 @@ async def bonus_once(session, email, password, device_id):
                     print(f"[!] kirim {label} gagal: {exc}")
                     return None
                 print(f"[*] kirim {label} ({payload.hex()}), "
-                      f"percobaan {attempt}/2, tunggu respons maks "
-                      f"{timeout} dtk...")
-                data = wait_event(EVENT, timeout)
+                      f"percobaan {attempt}/2, tunggu respons '{resp_name}' "
+                      f"maks {timeout} dtk...")
+                data = wait_event(resp_name, timeout)
                 if data is not None:
-                    print(f"[+] respons '{EVENT}' diterima untuk {label} "
+                    print(f"[+] respons '{resp_name}' diterima untuk {label} "
                           f"({len(data)} B): {data.hex()}")
                     try:
                         return parse_fn(data)
@@ -318,13 +322,15 @@ async def bonus_once(session, email, password, device_id):
                         traceback.print_exc()
                         return {"parse_error": repr(exc),
                                 "raw_hex": data.hex()}
-                print(f"[!] tidak ada respons '{EVENT}' untuk {label} "
+                print(f"[!] tidak ada respons '{resp_name}' untuk {label} "
                       f"(percobaan {attempt}/2).")
             return None
 
         # 1. Count — ada bonus atau tidak (EventId=2, tanpa RewardId).
+        # Respons datang di RoomEvent "A" (bukan "daily_bonus").
         hasil["count"] = bonus_request(
-            "Count (EventId=2)", bytes.fromhex("0802"), parse_bonus_count)
+            "Count (EventId=2)", bytes.fromhex("0802"), "A",
+            parse_bonus_count)
         if isinstance(hasil["count"], dict):
             print(f"[+] Count: {hasil['count']}")
         else:
@@ -351,8 +357,10 @@ async def bonus_once(session, email, password, device_id):
                   "klaim paksa untuk melihat respons server.")
             hasil["claim_forced"] = True
         hasil["claim_sent"] = True
+        # Respons klaim diduga datang di RoomEvent "B" (simetri sub-key).
         hasil["claim"] = bonus_request(
-            "Klaim gratis (EventId=1)", bytes(payload), parse_bonus_claim)
+            "Klaim gratis (EventId=1)", bytes(payload), "B",
+            parse_bonus_claim)
         if isinstance(hasil["claim"], dict):
             print(f"[+] Klaim: {hasil['claim']}")
         else:
