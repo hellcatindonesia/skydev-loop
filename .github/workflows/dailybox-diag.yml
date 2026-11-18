@@ -34,6 +34,10 @@ on:
         description: "Hanya baca status, jangan klaim (true/false)"
         required: false
         default: "false"
+      force_collect:
+        description: "Kirim Collect walau status 0 kotak, untuk lihat respons server (true/false)"
+        required: false
+        default: "false"
 
 jobs:
   diag:
@@ -58,6 +62,8 @@ jobs:
         run: |
           if [ "${{ inputs.status_only }}" = "true" ]; then
             python -u dailybox_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --status-only
+          elif [ "${{ inputs.force_collect }}" = "true" ]; then
+            python -u dailybox_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --force-collect
           else
             python -u dailybox_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
           fi
