@@ -1,0 +1,168 @@
+{
+ "activity_id": "e4aea118-36a7-4e1d-bbe9-a519d11a7363",
+ "owner_id": "aae2efe1-1abb-48c2-8799-ea192692a49c",
+ "publication_id": null,
+ "terrain_type": 4534,
+ "placed_items": [
+  {
+   "id": 2982,
+   "position": {
+    "x": -4.0,
+    "y": 31.5753173828125,
+    "z": 0.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 9634,
+   "position": {
+    "x": 4.0,
+    "y": 31.61431884765625,
+    "z": 0.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 7906,
+   "position": {
+    "x": 0.0,
+    "y": 31.5753173828125,
+    "z": -5.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 7911,
+   "position": {
+    "x": -5.0,
+    "y": 31.5753173828125,
+    "z": -4.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 7930,
+   "position": {
+    "x": 5.0,
+    "y": 31.5753173828125,
+    "z": -4.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 5319,
+   "position": {
+    "x": -7.0,
+    "y": 31.5753173828125,
+    "z": 2.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 5319,
+   "position": {
+    "x": -3.0,
+    "y": 31.5753173828125,
+    "z": 5.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 5319,
+   "position": {
+    "x": 0.0,
+    "y": 31.5753173828125,
+    "z": 6.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 5319,
+   "position": {
+    "x": 3.0,
+    "y": 31.5753173828125,
+    "z": 5.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 5319,
+   "position": {
+    "x": 7.0,
+    "y": 31.5753173828125,
+    "z": 2.0
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  }
+ ],
+ "rooms": [
+  {
+   "floor": 392,
+   "walls": []
+  },
+  {
+   "floor": 4555,
+   "walls": []
+  }
+ ]
+}
