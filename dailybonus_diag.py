@@ -279,11 +279,16 @@ async def bonus_once(session, email, password, device_id):
 
         def wait_event(name, timeout=10):
             """Baca frame sampai dapat RoomEvent `name` atau timeout.
-            Kembalikan data protobuf (bytes) atau None."""
+            Mencatat SEMUA nama RoomEvent yang lewat (untuk melihat bila
+            respons datang dengan nama lain). Kembalikan data protobuf
+            (bytes) atau None."""
             end = time.time() + timeout
             while time.time() < end:
                 for f in fr.drain(0.5):
                     ev_name, d = G.decode_room_event(f)
+                    if ev_name is not None:
+                        print(f"[.] event lewat: '{ev_name}' "
+                              f"({len(d) if d else 0} B)")
                     if ev_name == name:
                         return d
             return None
