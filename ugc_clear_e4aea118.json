@@ -1,0 +1,17 @@
+{
+ "activity_id": "e4aea118-36a7-4e1d-bbe9-a519d11a7363",
+ "owner_id": "aae2efe1-1abb-48c2-8799-ea192692a49c",
+ "publication_id": null,
+ "terrain_type": 4534,
+ "placed_items": [],
+ "rooms": [
+  {
+   "floor": 392,
+   "walls": []
+  },
+  {
+   "floor": 4555,
+   "walls": []
+  }
+ ]
+}
