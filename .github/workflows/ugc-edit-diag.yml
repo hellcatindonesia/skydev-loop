@@ -1,0 +1,82 @@
+name: DIAG UGC Edit — terapkan layout sumber ke world/draft yang sudah ada
+
+# Edit layout UGC ke world/draft yang SUDAH ADA (2026-11-18, Bartes):
+# bot pkxdshop menerapkan TerrainData dari JSON sumber (hasil fetch
+# TROPlCAL PARADlSE) ke activity yang sudah ada — TANPA create baru.
+# Dipakai karena create draft baru SELALU ditolak server
+# (DOES_NOT_POSSESS_ACTIVITY_TYPE, 6x) meski terrain sudah dibeli di
+# game; edit melewati langkah create/terrain sepenuhnya.
+# Target utama: W0RLD WAR 3 (40c65049-38b7-4f67-ab82-9326e37f7b6a,
+# terrain 4706, kosong, sudah publish) — edit langsung mengubah world
+# yang live; nama dipertahankan kecuali world_name diisi.
+# Wire (TERBUKTI via disassembly dump_3):
+# - edit "activityDraft/edit" EditActivityDraftRequest f1 ActivityId,
+#   f2 Items, f3 Rooms, f4 StoreTreeId (default
+#   "ugc-builder-in-game-store-1_91_0") -> "edit-activity-draft" /
+#   "...-error" (f1 ActivityDraftErrorType; 3 = MissingNeededItems).
+#   TIDAK ada field terrain — terrain hanya diset saat create.
+# - Belum terbukti server menerima edit atas activity PUBLISH
+#   (bukan draft); bila ditolak, fallback-nya edit salah satu draft
+#   pkxdshop (perlu activityId dari draft list).
+# - Berhenti di kegagalan pertama; dry_run=true hanya validasi +
+#   cetak payload tanpa login.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      target_id:
+        description: "ActivityId world/draft tujuan edit"
+        required: true
+      source_json:
+        description: "File JSON TerrainData sumber (di repo)"
+        required: false
+        default: "ugc_fetch_5dcf211e.json"
+      store_tree_id:
+        description: "StoreTreeId untuk edit terrain"
+        required: false
+        default: "ugc-builder-in-game-store-1_91_0"
+      world_name:
+        description: "Nama baru world (kosong = nama dipertahankan)"
+        required: false
+        default: ""
+      dry_run:
+        description: "true = hanya validasi + cetak payload, tanpa login"
+        required: false
+        default: "false"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run UGC edit probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -u ugc_edit_diag.py --dry-run --target-id "${{ inputs.target_id }}" --source-json "${{ inputs.source_json }}" --store-tree-id "${{ inputs.store_tree_id }}" --world-name "${{ inputs.world_name }}"
+          else
+            python -u ugc_edit_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --target-id "${{ inputs.target_id }}" --source-json "${{ inputs.source_json }}" --store-tree-id "${{ inputs.store_tree_id }}" --world-name "${{ inputs.world_name }}"
+          fi
