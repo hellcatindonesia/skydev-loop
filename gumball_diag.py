@@ -252,11 +252,54 @@ def parse_gumball_prob(data):
             "error": d.get(3), "items": items}
 
 
-async def gumball_once(session, email, password, device_id):
+def parse_gumball_buy(data):
+    d = parse_protobuf(data)
+    rewards = []
+    res = d.get(5)
+    if isinstance(res, (bytes, bytearray)):
+        res = _jsonable(_nested(res))
+    if isinstance(res, dict):
+        raw_rewards = res.get("1")
+        if raw_rewards is not None:
+            raw_rewards = (raw_rewards if isinstance(raw_rewards, list)
+                           else [raw_rewards])
+            for raw in raw_rewards:
+                loot = _jsonable(_nested(raw))
+                if not isinstance(loot, dict):
+                    rewards.append({"raw": loot})
+                    continue
+                rewards.append({
+                    "type": TYPE_NAMES.get(loot.get("1"), loot.get("1")),
+                    "id": loot.get("2"),
+                    "quantity": loot.get("3"),
+                    "money": loot.get("4"),
+                    "unique": loot.get("5"),
+                    "pet": loot.get("7"),
+                    "quality": QUALITY_NAMES.get(loot.get("8"),
+                                                  loot.get("8")),
+                })
+        pity = res.get("2")
+    else:
+        pity = None
+    cap = d.get(4)
+    if isinstance(cap, (bytes, bytearray)):
+        cap = _jsonable(_nested(cap))
+    wallet = d.get(6)
+    if isinstance(wallet, (bytes, bytearray)):
+        wallet = _jsonable(_nested(wallet))
+    return {"event_id": d.get(1), "successful": d.get(2),
+            "error": d.get(3),
+            "cap": cap if isinstance(cap, dict) else None,
+            "rewards": rewards, "pity_index": pity,
+            "wallet": wallet if isinstance(wallet, dict) else None}
+
+
+async def gumball_once(session, email, password, device_id, do_buy=False):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "server": "", "room": None, "player_id": None,
              "login_ok": False, "deviceid_sent": False,
-             "info": None, "probabilities": {}, "error": None}
+             "info": None, "probabilities": {}, "buy": None,
+             "error": None}
     user_jwt, alloc = await L.login_and_allocate(email, password, device_id,
                                                  session)
     if not alloc:
@@ -391,6 +434,88 @@ async def gumball_once(session, email, password, device_id):
                           f"money={_money_str(it.get('money'))} "
                           f"q={it.get('quality')} "
                           f"p={it.get('probability')}")
+
+        # 3. Buy — HANYA bila --buy true. SATU putaran, SATU KALI KIRIM.
+        # BuyGumballRequest: f1 EventId=0 (proto3 default, DIHILANGKAN),
+        # f2 MachineId. TIDAK ADA kirim ulang bila respons hilang:
+        # GetInfo ulang (read-only) dipakai untuk melihat apakah cap
+        # berkurang (5->4 = pembelian masuk server).
+        if do_buy and machines:
+            m0 = machines[0]
+            mid = m0.get("machine_id")
+            cap0 = m0.get("cap") or {}
+            remaining = cap0.get("3")
+            if not mid:
+                print("[!] Buy dibatalkan: machine_id kosong.")
+                hasil["buy"] = {"attempted": False,
+                                "reason": "machine_id kosong"}
+            elif remaining is not None and remaining <= 0:
+                print("[!] Buy dibatalkan: cap habis (sisa 0).")
+                hasil["buy"] = {"attempted": False,
+                                "reason": "cap habis",
+                                "cap_before": cap0}
+            else:
+                payload = _str_field(2, mid)
+                print(f"[*] BELI 1 putaran mesin '{mid}' "
+                      f"({payload.hex()}) — harga "
+                      f"{_money_str(m0.get('price'))}, cap sisa "
+                      f"{remaining}. Dikirim SATU KALI, tunggu respons "
+                      f"'{EVENT}' maks 20 dtk...")
+                try:
+                    sock.sendall(L.build_room_event_varint(EVENT, payload))
+                except Exception as exc:
+                    print(f"[!] kirim Buy gagal: {exc}")
+                    hasil["buy"] = {"attempted": False,
+                                    "reason": f"kirim gagal: {exc}"}
+                else:
+                    data = wait_event(EVENT, 20)
+                    if data is not None:
+                        print(f"[+] respons '{EVENT}' diterima untuk Buy "
+                              f"({len(data)} B): {data.hex()}")
+                        try:
+                            buy = parse_gumball_buy(data)
+                        except Exception as exc:
+                            print(f"[!] parse respons Buy gagal: {exc!r}")
+                            import traceback
+                            traceback.print_exc()
+                            buy = {"parse_error": repr(exc),
+                                   "raw_hex": data.hex()}
+                        buy["attempted"] = True
+                        hasil["buy"] = buy
+                        for r in (buy.get("rewards") or []):
+                            print(f"    HADIAH: {r.get('type')} "
+                                  f"id={r.get('id')} "
+                                  f"x{r.get('quantity')} "
+                                  f"money={_money_str(r.get('money'))} "
+                                  f"q={r.get('quality')} "
+                                  f"pet={r.get('pet')}")
+                        print(f"    Dompet sesudah: "
+                              f"{_money_str(buy.get('wallet'))}  "
+                              f"cap sesudah: "
+                              f"{(buy.get('cap') or {}).get('3')}/"
+                              f"{(buy.get('cap') or {}).get('2')}")
+                    else:
+                        print("[!] TIDAK ADA respons Buy dalam 20 dtk — "
+                              "TIDAK kirim ulang. Cek cap via GetInfo...")
+                        info2 = gumball_request(
+                            "GetInfo ulang (cek cap)", bytes.fromhex("0802"),
+                            parse_gumball_info)
+                        cap_after = None
+                        if isinstance(info2, dict):
+                            ms2 = info2.get("machines") or []
+                            if ms2:
+                                cap_after = ms2[0].get("cap")
+                        hasil["buy"] = {
+                            "attempted": True, "response_lost": True,
+                            "cap_before": cap0, "cap_after": cap_after,
+                            "bought": (cap_after or {}).get("3") is not None
+                            and remaining is not None
+                            and (cap_after or {}).get("3") < remaining}
+                        print(f"    cap sebelum: {remaining}, "
+                              f"cap sesudah: "
+                              f"{(cap_after or {}).get('3')} "
+                              f"-> beli masuk: "
+                              f"{hasil['buy']['bought']}")
     finally:
         try:
             sock.close()
@@ -405,25 +530,34 @@ async def main():
     ap.add_argument("--email", default=os.getenv("DB_EMAIL", ""))
     ap.add_argument("--password", default=os.getenv("DB_PASSWORD", ""))
     ap.add_argument("--device-id", default=os.getenv("DB_DEVICE_ID", ""))
+    ap.add_argument("--buy", default=os.getenv("DB_BUY", "false"),
+                    choices=["true", "false"],
+                    help="true = BELI 1 putaran (200 tiket) di mesin "
+                         "pertama; false = baca saja (default)")
     args = ap.parse_args()
     if not args.email or not args.password:
         print("[!] email/password bot wajib diisi.")
         return 1
+    do_buy = args.buy == "true"
+    if do_buy:
+        print("[!] MODE BELI AKTIF: 1 putaran Gumball (200 tiket).")
     async with L.AsyncSession(impersonate="chrome110",
                               verify=False) as session:
         try:
             hasil = await gumball_once(
-                session, args.email, args.password, args.device_id)
+                session, args.email, args.password, args.device_id,
+                do_buy=do_buy)
         except Exception as exc:
             hasil = {"email": args.email, "bot_user_id": BOT_USER_ID,
                      "server": "", "room": None, "player_id": None,
                      "login_ok": False, "deviceid_sent": False,
-                     "info": None, "probabilities": {},
+                     "info": None, "probabilities": {}, "buy": None,
                      "error": f"{type(exc).__name__}: {exc}"}
             print(f"[!] gumball_once gagal: {type(exc).__name__}: {exc}")
     hasil = _jsonable(hasil)
     print("")
-    print("========== HASIL GUMBALL (READ-ONLY) ==========")
+    print("========== HASIL GUMBALL "
+          f"({'BELI 1x' if do_buy else 'READ-ONLY'}) ==========")
     info = hasil.get("info") or {}
     print(f"Login OK: {hasil.get('login_ok')}  "
           f"player_id: {hasil.get('player_id')}")
@@ -438,6 +572,25 @@ async def main():
             print(f"    - {it.get('type')} id={it.get('id')} "
                   f"x{it.get('quantity')} q={it.get('quality')} "
                   f"p={it.get('probability')}")
+    buy = hasil.get("buy")
+    if isinstance(buy, dict):
+        print(f"Buy attempted: {buy.get('attempted')}  "
+              f"successful: {buy.get('successful')}  "
+              f"error: {buy.get('error')}")
+        for r in (buy.get("rewards") or []):
+            print(f"  HADIAH: {r.get('type')} id={r.get('id')} "
+                  f"x{r.get('quantity')} "
+                  f"money={_money_str(r.get('money'))} "
+                  f"q={r.get('quality')} pet={r.get('pet')}")
+        print(f"  Dompet sesudah: {_money_str(buy.get('wallet'))}  "
+              f"cap sesudah: {(buy.get('cap') or {}).get('3')}/"
+              f"{(buy.get('cap') or {}).get('2')}  "
+              f"pity: {buy.get('pity_index')}")
+        if buy.get("response_lost"):
+            print(f"  (respons Buy hilang; cap sebelum "
+                  f"{(buy.get('cap_before') or {}).get('3')}, sesudah "
+                  f"{(buy.get('cap_after') or {}).get('3')} -> "
+                  f"beli masuk: {buy.get('bought')})")
     if hasil.get("error"):
         print(f"Error: {hasil.get('error')}")
     print("=================================================")
