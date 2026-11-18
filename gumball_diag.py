@@ -294,7 +294,7 @@ def parse_gumball_buy(data):
             "wallet": wallet if isinstance(wallet, dict) else None}
 
 
-async def gumball_once(session, email, password, device_id, do_buy=False):
+async def gumball_once(session, email, password, device_id, buy_count=0):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "server": "", "room": None, "player_id": None,
              "login_ok": False, "deviceid_sent": False,
@@ -435,68 +435,61 @@ async def gumball_once(session, email, password, device_id, do_buy=False):
                           f"q={it.get('quality')} "
                           f"p={it.get('probability')}")
 
-        # 3. Buy — HANYA bila --buy true. SATU putaran, SATU KALI KIRIM.
-        # BuyGumballRequest: f1 EventId=0 (proto3 default, DIHILANGKAN),
-        # f2 MachineId. TIDAK ADA kirim ulang bila respons hilang:
-        # GetInfo ulang (read-only) dipakai untuk melihat apakah cap
-        # berkurang (5->4 = pembelian masuk server).
-        if do_buy and machines:
+        # 3. Buy — HANYA bila buy_count > 0. Tiap putaran SATU KALI KIRIM.
+        # Berhenti lebih awal bila: cap habis, tiket < harga, respons
+        # Buy hilang (TIDAK kirim ulang — GetInfo ulang dipakai untuk
+        # melihat apakah cap berkurang), atau Buy ditolak server.
+        # GetInfo segar dibaca sebelum tiap putaran (cap terbaru).
+        if buy_count > 0 and machines:
             m0 = machines[0]
             mid = m0.get("machine_id")
-            cap0 = m0.get("cap") or {}
-            remaining = cap0.get("3")
+            price = m0.get("price") or {}
+            price_tickets = price.get("3") or 200
+            hasil["buy"] = {"attempted": False, "pulls": []}
             if not mid:
                 print("[!] Buy dibatalkan: machine_id kosong.")
-                hasil["buy"] = {"attempted": False,
-                                "reason": "machine_id kosong"}
-            elif remaining is not None and remaining <= 0:
-                print("[!] Buy dibatalkan: cap habis (sisa 0).")
-                hasil["buy"] = {"attempted": False,
-                                "reason": "cap habis",
-                                "cap_before": cap0}
+                hasil["buy"]["reason"] = "machine_id kosong"
             else:
-                payload = _str_field(2, mid)
-                print(f"[*] BELI 1 putaran mesin '{mid}' "
-                      f"({payload.hex()}) — harga "
-                      f"{_money_str(m0.get('price'))}, cap sisa "
-                      f"{remaining}. Dikirim SATU KALI, tunggu respons "
-                      f"'{EVENT}' maks 20 dtk...")
-                try:
-                    sock.sendall(L.build_room_event_varint(EVENT, payload))
-                except Exception as exc:
-                    print(f"[!] kirim Buy gagal: {exc}")
-                    hasil["buy"] = {"attempted": False,
-                                    "reason": f"kirim gagal: {exc}"}
-                else:
+                last_wallet = None
+                for pull_no in range(1, buy_count + 1):
+                    info_now = gumball_request(
+                        f"GetInfo sebelum putaran {pull_no}",
+                        bytes.fromhex("0802"), parse_gumball_info)
+                    cap_now = {}
+                    if isinstance(info_now, dict):
+                        ms = info_now.get("machines") or []
+                        if ms:
+                            cap_now = ms[0].get("cap") or {}
+                    remaining = cap_now.get("3")
+                    if remaining is not None and remaining <= 0:
+                        print(f"[!] Berhenti putaran {pull_no}: cap habis.")
+                        hasil["buy"]["reason"] = "cap habis"
+                        break
+                    if last_wallet is not None:
+                        tix = last_wallet.get("3") or 0
+                        if tix < price_tickets:
+                            print(f"[!] Berhenti putaran {pull_no}: tiket "
+                                  f"{tix} < harga {price_tickets}.")
+                            hasil["buy"]["reason"] = "tiket kurang"
+                            break
+                    payload = _str_field(2, mid)
+                    print(f"[*] BELI putaran {pull_no}/{buy_count} mesin "
+                          f"'{mid}' ({payload.hex()}) — harga "
+                          f"{price_tickets} tiket, cap sisa {remaining}. "
+                          f"Dikirim SATU KALI, tunggu respons '{EVENT}' "
+                          f"maks 20 dtk...")
+                    try:
+                        sock.sendall(L.build_room_event_varint(EVENT,
+                                                                payload))
+                    except Exception as exc:
+                        print(f"[!] kirim Buy gagal: {exc}")
+                        hasil["buy"]["reason"] = f"kirim gagal: {exc}"
+                        break
                     data = wait_event(EVENT, 20)
-                    if data is not None:
-                        print(f"[+] respons '{EVENT}' diterima untuk Buy "
-                              f"({len(data)} B): {data.hex()}")
-                        try:
-                            buy = parse_gumball_buy(data)
-                        except Exception as exc:
-                            print(f"[!] parse respons Buy gagal: {exc!r}")
-                            import traceback
-                            traceback.print_exc()
-                            buy = {"parse_error": repr(exc),
-                                   "raw_hex": data.hex()}
-                        buy["attempted"] = True
-                        hasil["buy"] = buy
-                        for r in (buy.get("rewards") or []):
-                            print(f"    HADIAH: {r.get('type')} "
-                                  f"id={r.get('id')} "
-                                  f"x{r.get('quantity')} "
-                                  f"money={_money_str(r.get('money'))} "
-                                  f"q={r.get('quality')} "
-                                  f"pet={r.get('pet')}")
-                        print(f"    Dompet sesudah: "
-                              f"{_money_str(buy.get('wallet'))}  "
-                              f"cap sesudah: "
-                              f"{(buy.get('cap') or {}).get('3')}/"
-                              f"{(buy.get('cap') or {}).get('2')}")
-                    else:
+                    if data is None:
                         print("[!] TIDAK ADA respons Buy dalam 20 dtk — "
-                              "TIDAK kirim ulang. Cek cap via GetInfo...")
+                              "TIDAK kirim ulang, BERHENTI. Cek cap via "
+                              "GetInfo...")
                         info2 = gumball_request(
                             "GetInfo ulang (cek cap)", bytes.fromhex("0802"),
                             parse_gumball_info)
@@ -505,17 +498,48 @@ async def gumball_once(session, email, password, device_id, do_buy=False):
                             ms2 = info2.get("machines") or []
                             if ms2:
                                 cap_after = ms2[0].get("cap")
-                        hasil["buy"] = {
-                            "attempted": True, "response_lost": True,
-                            "cap_before": cap0, "cap_after": cap_after,
+                        hasil["buy"]["pulls"].append({
+                            "pull": pull_no, "attempted": True,
+                            "response_lost": True,
+                            "cap_before": cap_now, "cap_after": cap_after,
                             "bought": (cap_after or {}).get("3") is not None
                             and remaining is not None
-                            and (cap_after or {}).get("3") < remaining}
-                        print(f"    cap sebelum: {remaining}, "
-                              f"cap sesudah: "
-                              f"{(cap_after or {}).get('3')} "
-                              f"-> beli masuk: "
-                              f"{hasil['buy']['bought']}")
+                            and (cap_after or {}).get("3") < remaining})
+                        hasil["buy"]["reason"] = "respons Buy hilang"
+                        break
+                    print(f"[+] respons '{EVENT}' diterima untuk Buy "
+                          f"putaran {pull_no} ({len(data)} B): {data.hex()}")
+                    try:
+                        buy = parse_gumball_buy(data)
+                    except Exception as exc:
+                        print(f"[!] parse respons Buy gagal: {exc!r}")
+                        import traceback
+                        traceback.print_exc()
+                        buy = {"parse_error": repr(exc),
+                               "raw_hex": data.hex()}
+                    buy["attempted"] = True
+                    buy["pull"] = pull_no
+                    hasil["buy"]["pulls"].append(buy)
+                    hasil["buy"]["attempted"] = True
+                    if isinstance(buy.get("wallet"), dict):
+                        last_wallet = buy["wallet"]
+                    for r in (buy.get("rewards") or []):
+                        print(f"    HADIAH #{pull_no}: {r.get('type')} "
+                              f"id={r.get('id')} "
+                              f"x{r.get('quantity')} "
+                              f"money={_money_str(r.get('money'))} "
+                              f"q={r.get('quality')} "
+                              f"pet={r.get('pet')}")
+                    print(f"    Dompet sesudah putaran {pull_no}: "
+                          f"{_money_str(buy.get('wallet'))}  "
+                          f"cap sesudah: "
+                          f"{(buy.get('cap') or {}).get('3')}/"
+                          f"{(buy.get('cap') or {}).get('2')}")
+                    if not buy.get("successful"):
+                        print(f"[!] Buy putaran {pull_no} DITOLAK server "
+                              f"({buy.get('error')}) — BERHENTI.")
+                        hasil["buy"]["reason"] = "ditolak server"
+                        break
     finally:
         try:
             sock.close()
@@ -530,23 +554,25 @@ async def main():
     ap.add_argument("--email", default=os.getenv("DB_EMAIL", ""))
     ap.add_argument("--password", default=os.getenv("DB_PASSWORD", ""))
     ap.add_argument("--device-id", default=os.getenv("DB_DEVICE_ID", ""))
-    ap.add_argument("--buy", default=os.getenv("DB_BUY", "false"),
-                    choices=["true", "false"],
-                    help="true = BELI 1 putaran (200 tiket) di mesin "
-                         "pertama; false = baca saja (default)")
+    ap.add_argument("--buy-count", type=int,
+                    default=int(os.getenv("DB_BUY_COUNT", "0")),
+                    help="jumlah putaran BELI (200 tiket/putaran); "
+                         "0 = baca saja (default). Berhenti lebih awal "
+                         "bila cap habis / tiket < 200 / respons hilang.")
     args = ap.parse_args()
     if not args.email or not args.password:
         print("[!] email/password bot wajib diisi.")
         return 1
-    do_buy = args.buy == "true"
-    if do_buy:
-        print("[!] MODE BELI AKTIF: 1 putaran Gumball (200 tiket).")
+    buy_count = max(0, args.buy_count)
+    if buy_count:
+        print(f"[!] MODE BELI AKTIF: maks {buy_count} putaran Gumball "
+              f"(200 tiket/putaran).")
     async with L.AsyncSession(impersonate="chrome110",
                               verify=False) as session:
         try:
             hasil = await gumball_once(
                 session, args.email, args.password, args.device_id,
-                do_buy=do_buy)
+                buy_count=buy_count)
         except Exception as exc:
             hasil = {"email": args.email, "bot_user_id": BOT_USER_ID,
                      "server": "", "room": None, "player_id": None,
@@ -557,7 +583,7 @@ async def main():
     hasil = _jsonable(hasil)
     print("")
     print("========== HASIL GUMBALL "
-          f"({'BELI 1x' if do_buy else 'READ-ONLY'}) ==========")
+          f"({'BELI maks ' + str(buy_count) + 'x' if buy_count else 'READ-ONLY'}) ==========")
     info = hasil.get("info") or {}
     print(f"Login OK: {hasil.get('login_ok')}  "
           f"player_id: {hasil.get('player_id')}")
@@ -574,23 +600,26 @@ async def main():
                   f"p={it.get('probability')}")
     buy = hasil.get("buy")
     if isinstance(buy, dict):
-        print(f"Buy attempted: {buy.get('attempted')}  "
-              f"successful: {buy.get('successful')}  "
-              f"error: {buy.get('error')}")
-        for r in (buy.get("rewards") or []):
-            print(f"  HADIAH: {r.get('type')} id={r.get('id')} "
-                  f"x{r.get('quantity')} "
-                  f"money={_money_str(r.get('money'))} "
-                  f"q={r.get('quality')} pet={r.get('pet')}")
-        print(f"  Dompet sesudah: {_money_str(buy.get('wallet'))}  "
-              f"cap sesudah: {(buy.get('cap') or {}).get('3')}/"
-              f"{(buy.get('cap') or {}).get('2')}  "
-              f"pity: {buy.get('pity_index')}")
-        if buy.get("response_lost"):
-            print(f"  (respons Buy hilang; cap sebelum "
-                  f"{(buy.get('cap_before') or {}).get('3')}, sesudah "
-                  f"{(buy.get('cap_after') or {}).get('3')} -> "
-                  f"beli masuk: {buy.get('bought')})")
+        for p in (buy.get("pulls") or []):
+            print(f"Putaran {p.get('pull')}: attempted={p.get('attempted')} "
+                  f"successful={p.get('successful')} "
+                  f"error={p.get('error')}")
+            for r in (p.get("rewards") or []):
+                print(f"  HADIAH: {r.get('type')} id={r.get('id')} "
+                      f"x{r.get('quantity')} "
+                      f"money={_money_str(r.get('money'))} "
+                      f"q={r.get('quality')} pet={r.get('pet')}")
+            print(f"  Dompet sesudah: {_money_str(p.get('wallet'))}  "
+                  f"cap sesudah: {(p.get('cap') or {}).get('3')}/"
+                  f"{(p.get('cap') or {}).get('2')}  "
+                  f"pity: {p.get('pity_index')}")
+            if p.get("response_lost"):
+                print(f"  (respons Buy hilang; cap sebelum "
+                      f"{(p.get('cap_before') or {}).get('3')}, sesudah "
+                      f"{(p.get('cap_after') or {}).get('3')} -> "
+                      f"beli masuk: {p.get('bought')})")
+        if buy.get("reason"):
+            print(f"  Berhenti karena: {buy.get('reason')}")
     if hasil.get("error"):
         print(f"Error: {hasil.get('error')}")
     print("=================================================")
