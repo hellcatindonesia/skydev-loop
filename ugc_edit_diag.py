@@ -38,20 +38,51 @@ DEFAULT_STORE_TREE_ID = C.DEFAULT_STORE_TREE_ID
 STEP_TIMEOUT = C.STEP_TIMEOUT
 
 
+def filter_source(src, include_types, rooms_mode):
+    """Filter layout sumber untuk tes kepemilikan.
+    include_types: "ALL" (semua item), "NONE" (tanpa item),
+    atau "id1,id2,..." (hanya tipe itu).
+    rooms_mode: "source" (room sumber) atau "empty" (tanpa room).
+    Kembalikan (items, rooms, included_type_ids)."""
+    all_items = src.get("placed_items") or []
+    all_rooms = src.get("rooms") or []
+    spec = (include_types or "ALL").strip().upper()
+    if spec == "ALL":
+        items = list(all_items)
+        tids = sorted({it["id"] for it in items})
+    elif spec == "NONE":
+        items = []
+        tids = []
+    else:
+        wanted = set()
+        for part in spec.split(","):
+            part = part.strip()
+            if part:
+                wanted.add(int(part))
+        items = [it for it in all_items if it.get("id") in wanted]
+        tids = sorted(wanted)
+    rooms = list(all_rooms) if (rooms_mode or "source") == "source" else []
+    return items, rooms, tids
+
+
 async def ugc_edit_once(session, email, password, device_id, src,
-                        target_id, store_tree_id, world_name=None):
+                        target_id, store_tree_id, world_name=None,
+                        include_types="ALL", rooms_mode="source"):
+    items, rooms, tids = filter_source(src, include_types, rooms_mode)
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "source_activity_id": src.get("activity_id"),
              "source_terrain_type": src.get("terrain_type"),
              "target_activity_id": target_id,
              "store_tree_id": store_tree_id,
              "world_name": world_name,
+             "include_types": tids,
+             "items_count": len(items),
+             "rooms_mode": rooms_mode,
              "steps": {}, "error": None, "events_seen": []}
-    items = src.get("placed_items") or []
-    rooms = src.get("rooms") or []
     print(f"[*] Target edit: {target_id}")
-    print(f"[*] Layout sumber: {len(items)} item, {len(rooms)} room "
-          f"(terrain sumber {src.get('terrain_type')}).")
+    print(f"[*] Layout uji: {len(items)} item "
+          f"(tipe {tids if len(tids) <= 10 else str(tids[:10]) + '...'}), "
+          f"{len(rooms)} room (mode {rooms_mode}).")
     user_jwt, alloc = await L.login_and_allocate(
         email, password, device_id, session)
     if not alloc:
@@ -135,6 +166,12 @@ async def main():
         "UGC_STORE_TREE_ID", DEFAULT_STORE_TREE_ID))
     ap.add_argument("--world-name", default=os.getenv(
         "UGC_WORLD_NAME", ""))
+    ap.add_argument("--include-types", default=os.getenv(
+        "UGC_INCLUDE_TYPES", "ALL"),
+        help="ALL (semua item) | NONE (tanpa item) | id1,id2,...")
+    ap.add_argument("--rooms", default=os.getenv(
+        "UGC_ROOMS", "source"),
+        help="source (room sumber) | empty (tanpa room)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -143,14 +180,17 @@ async def main():
     except Exception as exc:
         print(f"[!] JSON sumber tidak valid: {exc}")
         return 1
-    items = src.get("placed_items") or []
-    rooms = src.get("rooms") or []
+    items, rooms, tids = filter_source(
+        src, args.include_types, args.rooms)
     payload = C.build_edit_payload(
         args.target_id, items, rooms, args.store_tree_id)
     print("========== RENCANA EDIT (UGC EDIT DIAG) ==========")
     print(f"Sumber: {src.get('activity_id')} "
           f"(terrain {src.get('terrain_type')}, "
-          f"{len(items)} item, {len(rooms)} room)")
+          f"{len(src.get('placed_items') or [])} item, "
+          f"{len(src.get('rooms') or [])} room)")
+    print(f"Uji: {len(items)} item (tipe {tids}), {len(rooms)} room "
+          f"(mode {args.rooms})")
     print(f"Target: {args.target_id}")
     print(f"Nama baru: {args.world_name or '(dipertahankan)'}")
     print(f"Payload EDIT ({len(payload)} B): "
@@ -169,7 +209,8 @@ async def main():
             hasil = await ugc_edit_once(
                 session, args.email, args.password, args.device_id,
                 src, args.target_id, args.store_tree_id,
-                args.world_name or None)
+                args.world_name or None,
+                args.include_types, args.rooms)
         except Exception as exc:
             import traceback
             traceback.print_exc()
