@@ -1,0 +1,69 @@
+name: DIAG Buy Item — beli 1 item via RoomEvent "buy" (1 bot tes)
+
+# Probe BELI (2026-11-18, Bartes): bot pkxdshop membeli 1 item dari
+# store via RoomEvent "buy" (ToxicBirdBuyMechanic).
+# Dipakai untuk terrain 4706 (1 koin) supaya copy UGC TROPlCAL PARADlSE
+# bisa create (terrain konsumabel: 1 beli = 1 world; pembelian
+# sebelumnya habis dipakai membuat W0RLD WAR 3).
+# Wire (TERBUKTI via disassembly dump_3):
+# - kirim "buy", balas "d" (BuyResultCommandKey).
+# - BuyItemRequest: f1 EventId (0 BuyCommonItem — dihilangkan),
+#   f2 Items repeated int32 packed, f3 StoreIds repeated string.
+# - StoreId terrain builder = "ugc-builder-in-game-store-1_91_0".
+# - Buy dikirim TEPAT 1x per run; bila respons "d" hilang, JANGAN
+#   beli ulang membabi buta — verifikasi lewat create draft / metadata.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      item_id:
+        description: "ID item yang dibeli"
+        required: false
+        default: "4706"
+      store_id:
+        description: "Store ID tempat item dibeli"
+        required: false
+        default: "ugc-builder-in-game-store-1_91_0"
+      dry_run:
+        description: "true = hanya validasi + cetak payload, tanpa login"
+        required: false
+        default: "false"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run buy probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+          DB_ITEM_ID: ${{ inputs.item_id }}
+          DB_STORE_ID: ${{ inputs.store_id }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -u buy_diag.py --dry-run --item-id "${{ inputs.item_id }}" --store-id "${{ inputs.store_id }}"
+          else
+            python -u buy_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --item-id "${{ inputs.item_id }}" --store-id "${{ inputs.store_id }}"
+          fi
