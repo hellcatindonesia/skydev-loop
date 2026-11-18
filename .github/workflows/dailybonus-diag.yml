@@ -9,6 +9,11 @@ name: DIAG Daily Bonus — count + klaim 1x 1 bot tes
 # SendCollectReward sama-sama mengirim RoomEvent "daily_bonus" (slot
 # statik 0x8904228, addend 0x8B3E9C8). Sub-key "A"/"B" BUKAN nama event —
 # yang membedakan count vs klaim adalah f1 EventId di protobuf.
+# Respons TIDAK datang dengan nama "daily_bonus": count dijawab di
+# RoomEvent "A" (1036 B, ~11 dtk sesudah kirim — TERBUKTI run
+# 44233018387, 2026-11-18) dan klaim diduga dijawab di "B" (simetri
+# sub-key; belum terverifikasi). Jadi kirim ke "daily_bonus", tunggu
+# respons di "A" (count) / "B" (klaim), timeout 20 dtk.
 # Request DailyBonusRewardRequest: f1 EventId (0=CollectWithReward
 # [iklan], 1=CollectWithoutReward [gratis], 2=GetCount), f2-f6 Day1-5
 # RewardId, f7-f11 Day1-5 Ad RewardId. Byte: Count = `08 02` (+ 10
