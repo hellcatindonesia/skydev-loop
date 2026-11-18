@@ -62,6 +62,7 @@ BERHENTI di kegagalan pertama (jangan retry write):
   3. editName-> tunggu "edit-name-activity-draft" (20 dtk)
   4. editTags-> tunggu "edit-tags-activity-draft" (20 dtk)
   5. publish -> tunggu "publish-activity-draft" (20 dtk)
+     (dilewati bila --no-publish: draft tersimpan, belum terbit)
 Mode --dry-run: hanya validasi JSON + bangun & cetak semua payload
 (hex) tanpa jaringan game sama sekali (tanpa login).
 
@@ -548,7 +549,8 @@ def build_plan(src, world_name, tags, store_tree_id, activity_type):
 
 # --------------------------------------------------------------------- live
 async def ugc_copy_once(session, email, password, device_id, src,
-                        world_name, tags, store_tree_id, activity_type):
+                        world_name, tags, store_tree_id, activity_type,
+                        publish=True):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "source_activity_id": src.get("activity_id"),
              "source_terrain_type": src.get("terrain_type"),
@@ -665,17 +667,25 @@ async def ugc_copy_once(session, email, password, device_id, src,
             hasil["error"] = f"EDIT tags gagal: {err}"
             return hasil
 
-        # Langkah 5 — PUBLISH.
-        ok, data, err = send_step(
-            sock, fr, EV_PUBLISH,
-            build_publish_payload(draft_id),
-            STEP_TIMEOUT, hasil["events_seen"],
-            "5/5 PUBLISH")
-        hasil["steps"]["publish"] = {"ok": ok, "error": err}
-        if not ok:
-            hasil["error"] = f"PUBLISH gagal: {err}"
-            return hasil
-        print(f"[+] WORLD TERBIT di akun target, draft {draft_id}.")
+        # Langkah 5 — PUBLISH (dilewati bila --no-publish: draft
+        # tersimpan sebagai draft, belum terbit — sesuai permintaan
+        # Bartes 2026-11-18: tata letak + save dulu, publish nanti).
+        if not publish:
+            hasil["steps"]["publish"] = {
+                "ok": None, "error": "dilewati (--no-publish)"}
+            print("[*] PUBLISH dilewati (--no-publish) — draft "
+                  f"{draft_id} tersimpan, BELUM terbit.")
+        else:
+            ok, data, err = send_step(
+                sock, fr, EV_PUBLISH,
+                build_publish_payload(draft_id),
+                STEP_TIMEOUT, hasil["events_seen"],
+                "5/5 PUBLISH")
+            hasil["steps"]["publish"] = {"ok": ok, "error": err}
+            if not ok:
+                hasil["error"] = f"PUBLISH gagal: {err}"
+                return hasil
+            print(f"[+] WORLD TERBIT di akun target, draft {draft_id}.")
     finally:
         try:
             sock.close()
@@ -699,6 +709,9 @@ async def main():
     ap.add_argument("--activity-type", type=int, default=int(
         os.getenv("DB_ACTIVITY_TYPE", "0") or 0))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-publish", action="store_true",
+                    help="Berhenti sesudah editTags: draft tersimpan, "
+                         "tidak publish (default: publish)")
     args = ap.parse_args()
 
     try:
@@ -755,7 +768,7 @@ async def main():
             hasil = await ugc_copy_once(
                 session, args.email, args.password, args.device_id,
                 src, args.world_name, tags, args.store_tree_id,
-                args.activity_type)
+                args.activity_type, publish=not args.no_publish)
         except Exception as exc:
             import traceback
             traceback.print_exc()
