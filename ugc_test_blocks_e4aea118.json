@@ -1,0 +1,138 @@
+{
+ "activity_id": "e4aea118-36a7-4e1d-bbe9-a519d11a7363",
+ "owner_id": "aae2efe1-1abb-48c2-8799-ea192692a49c",
+ "publication_id": null,
+ "terrain_type": 4534,
+ "placed_items": [
+  {
+   "id": 4882,
+   "position": {
+    "x": -51.67319107055664,
+    "y": 31.61431884765625,
+    "z": 53.3713264465332
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4869,
+   "position": {
+    "x": -49.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4872,
+   "position": {
+    "x": -47.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4875,
+   "position": {
+    "x": -45.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4878,
+   "position": {
+    "x": -43.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4881,
+   "position": {
+    "x": -41.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4884,
+   "position": {
+    "x": -39.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  },
+  {
+   "id": 4887,
+   "position": {
+    "x": -37.67,
+    "y": 31.61431884765625,
+    "z": 53.37
+   },
+   "rotation": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "color_id": -1,
+   "equipped_items": []
+  }
+ ],
+ "rooms": [
+  {
+   "floor": 392,
+   "walls": []
+  },
+  {
+   "floor": 4555,
+   "walls": []
+  }
+ ]
+}
