@@ -1,0 +1,94 @@
+name: DIAG UGC Copy — salin builder ke draft akun target 1 bot tes
+
+# Copy builder UGC antar akun Bartes sendiri (LANGKAH 2, 2026-11-18):
+# bot pkxdshop membuat draft BARU, mengisi dengan TerrainData dari
+# JSON sumber (hasil langkah 1: ugc_fetch_0d2522bd.json), lalu publish.
+# JANGAN dispatch sebelum Bartes konfirmasi sudah membeli map
+# (terrain 4706) di akun pkxdshop — server mungkin memvalidasi
+# kepemilikan item di akun target.
+# Wire format (TERBUKTI via disassembly libil2cpp.so lama):
+# - create  "activityDraft/create"   CreateActivityDraftRequest
+#   f1 ActivityType int32 (= id item terrain, 4706 utk world ini)
+#   -> "create-activity-draft" (CreateActivityDraftResponse f1
+#   ActivityId = draft baru) / "...-error".
+# - edit    "activityDraft/edit"     EditActivityDraftRequest
+#   f1 ActivityId, f2 Items, f3 Rooms, f4 StoreTreeId
+#   (default "ugc-builder-in-game-store-1_91_0")
+#   -> "edit-activity-draft" / "...-error".
+# - editName "activityDraft/editName" EditActivityNameRequest
+#   f1 ActivityId, f2 ActivityName -> "edit-name-activity-draft".
+# - editTags "activityDraft/editTags" EditActivityTagsRequest
+#   f1 ActivityId, f2 Tags (ActivityTag f1 TagType, f2 TagId)
+#   -> "edit-tags-activity-draft".
+# - publish "activityDraft/publish"  PublishActivityDraftRequest
+#   f1 ActivityId -> "publish-activity-draft".
+# - ActivityItem: f1 Id, f2 Position, f3 Rotation, f4 ColorId,
+#   f5 EquippedItems. ActivityRoom: f1 Floor, f2 Walls.
+#   Vector3: f1 X, f2 Y, f3 Z float. ColorId -1 = varint 10 byte.
+# - Berhenti di kegagalan pertama; dry_run=true hanya validasi +
+#   cetak payload tanpa login.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop (akun target)"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      source_json:
+        description: "File JSON TerrainData sumber (di repo)"
+        required: false
+        default: "ugc_fetch_0d2522bd.json"
+      world_name:
+        description: "Nama world baru di akun target (min 4 karakter)"
+        required: false
+        default: "Salinan"
+      tags:
+        description: "Tag world, format type:id,type:id (kosong = tanpa tag)"
+        required: false
+        default: ""
+      store_tree_id:
+        description: "StoreTreeId untuk edit terrain"
+        required: false
+        default: "ugc-builder-in-game-store-1_91_0"
+      dry_run:
+        description: "true = hanya validasi + cetak payload, tanpa login"
+        required: false
+        default: "false"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run UGC copy
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+          DB_SOURCE_JSON: ${{ inputs.source_json }}
+          DB_WORLD_NAME: ${{ inputs.world_name }}
+          DB_TAGS: ${{ inputs.tags }}
+          DB_STORE_TREE_ID: ${{ inputs.store_tree_id }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -u ugc_copy_diag.py --dry-run --source-json "${{ inputs.source_json }}" --world-name "${{ inputs.world_name }}" --tags "${{ inputs.tags }}" --store-tree-id "${{ inputs.store_tree_id }}"
+          else
+            python -u ugc_copy_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --source-json "${{ inputs.source_json }}" --world-name "${{ inputs.world_name }}" --tags "${{ inputs.tags }}" --store-tree-id "${{ inputs.store_tree_id }}"
+          fi
