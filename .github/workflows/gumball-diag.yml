@@ -39,10 +39,10 @@ on:
         description: "Device ID bot (kosong = default probe)"
         required: false
         default: ""
-      buy:
-        description: "BELI 1 putaran (200 tiket)? true/false — default false (baca saja)"
+      buy_count:
+        description: "Jumlah putaran BELI (200 tiket/putaran); 0 = baca saja"
         required: false
-        default: "false"
+        default: "0"
 
 jobs:
   diag:
@@ -64,6 +64,6 @@ jobs:
           DB_EMAIL: ${{ inputs.email }}
           DB_PASSWORD: ${{ inputs.password }}
           DB_DEVICE_ID: ${{ inputs.device_id }}
-          DB_BUY: ${{ inputs.buy }}
+          DB_BUY_COUNT: ${{ inputs.buy_count }}
         run: |
-          python -u gumball_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --buy "${{ inputs.buy }}"
+          python -u gumball_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --buy-count "${{ inputs.buy_count }}"
