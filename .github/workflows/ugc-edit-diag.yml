@@ -45,6 +45,14 @@ on:
         description: "StoreTreeId untuk edit terrain"
         required: false
         default: "ugc-builder-in-game-store-1_91_0"
+      include_types:
+        description: "Tipe item yang diuji: ALL | NONE | id1,id2,..."
+        required: false
+        default: "ALL"
+      rooms:
+        description: "Room yang dikirim: source | empty"
+        required: false
+        default: "source"
       world_name:
         description: "Nama baru world (kosong = nama dipertahankan)"
         required: false
@@ -76,7 +84,7 @@ jobs:
           DB_DEVICE_ID: ${{ inputs.device_id }}
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            python -u ugc_edit_diag.py --dry-run --target-id "${{ inputs.target_id }}" --source-json "${{ inputs.source_json }}" --store-tree-id "${{ inputs.store_tree_id }}" --world-name "${{ inputs.world_name }}"
+            python -u ugc_edit_diag.py --dry-run --target-id "${{ inputs.target_id }}" --source-json "${{ inputs.source_json }}" --store-tree-id "${{ inputs.store_tree_id }}" --world-name "${{ inputs.world_name }}" --include-types "${{ inputs.include_types }}" --rooms "${{ inputs.rooms }}"
           else
-            python -u ugc_edit_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --target-id "${{ inputs.target_id }}" --source-json "${{ inputs.source_json }}" --store-tree-id "${{ inputs.store_tree_id }}" --world-name "${{ inputs.world_name }}"
+            python -u ugc_edit_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --target-id "${{ inputs.target_id }}" --source-json "${{ inputs.source_json }}" --store-tree-id "${{ inputs.store_tree_id }}" --world-name "${{ inputs.world_name }}" --include-types "${{ inputs.include_types }}" --rooms "${{ inputs.rooms }}"
           fi
