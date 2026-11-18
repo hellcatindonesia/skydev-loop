@@ -92,15 +92,26 @@ async def inv_capture_once(session, email, password, device_id, seconds):
               f"(tanpa kirim apa pun)...")
         end = time.time() + seconds
         idx = 0
+        raw_frames = []
         while time.time() < end:
             for f in fr.drain(0.5):
                 s = _frame_summary(idx, f)
                 hasil["frames"].append(s)
+                raw_frames.append({"idx": idx, "type": f[0] if f else None,
+                                   "len": len(f), "hex": bytes(f).hex()})
                 ev = s.get("event")
                 print(f"[.] frame #{idx} type=0x{s['type']:02x} "
                       f"len={s['len']} event={ev!r}")
                 idx += 1
         print(f"[+] total {idx} frame tertangkap.")
+        # Cetak frame BESAR (>5000 B, kemungkinan berisi inventory)
+        # sebagai hex lengkap agar bisa dianalisis lokal. Hanya frame
+        # besar yang dicetak supaya log tidak membengkak.
+        for rf in raw_frames:
+            if rf["len"] > 5000:
+                print(f"INVCAP_BIGFRAME idx={rf['idx']} "
+                      f"type=0x{rf['type']:02x} len={rf['len']} "
+                      f"hex={rf['hex']}")
     finally:
         try:
             sock.close()
