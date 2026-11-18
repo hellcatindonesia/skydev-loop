@@ -1,0 +1,58 @@
+name: DIAG UGC Draft Get — ambil isi satu draft (read-only)
+
+# Probe ambil isi SATU draft UGC (2026-11-18, Bartes): bot login lalu
+# membaca isi draft (item + room) yang belum di-publish — untuk
+# melihat persis apa yang ditaruh client asli (ID, posisi, rotasi,
+# color_id) supaya tes edit berikutnya memakai data yang sama.
+# TIDAK ADA pembuatan draft, update draft, publish, atau penulisan
+# apa pun — hanya login + baca draft.
+# Wire format (TERBUKTI via stringliteral.json + dump_3):
+# - Request: RoomEvent "activityDraft/get", payload = protobuf
+#   GetActivityDraftRequest { f1 ActivityId string }.
+# - Respons: RoomEvent "get-activity-draft" = protobuf
+#   GetActivityDraftResponse f1 Data (ActivityData: f1 OwnerId,
+#   f2 ActivityId, f3 PublicationId, f4 Type=TerrainType,
+#   f5 Items repeated ActivityItem, f6 Rooms repeated ActivityRoom),
+#   f2 Metadata (ActivityDraftMetadata).
+# - Error: RoomEvent "get-activity-draft-error".
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email akun (SkyDev)"
+        required: true
+      password:
+        description: "Password akun (SkyDev)"
+        required: true
+      device_id:
+        description: "Device ID (kosong = default probe)"
+        required: false
+        default: ""
+      activity_id:
+        description: "Activity ID draft yang diambil isinya"
+        required: true
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run UGC draft get probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+          DB_ACTIVITY_ID: ${{ inputs.activity_id }}
+        run: |
+          python -u ugc_draftget_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --activity-id "${{ inputs.activity_id }}"
