@@ -167,7 +167,7 @@ def parse_dailybox_collect(data):
 
 
 async def dailybox_once(session, email, password, device_id,
-                        status_only=False):
+                        status_only=False, force_collect=False):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "server": "", "room": None, "player_id": None,
              "login_ok": False, "deviceid_sent": False,
@@ -279,12 +279,16 @@ async def dailybox_once(session, email, password, device_id,
             return hasil
 
         # 2. Collect GRATIS — hanya bila ada kotak tersedia (dan tidak
-        # --status-only).
+        # --status-only). --force-collect mengirim Collect walau status
+        # menunjukkan 0 kotak, untuk melihat respons server.
         if status_only:
             print("[*] Mode --status-only: Collect TIDAK dikirim.")
             return hasil
         avail = hasil["status"].get("available_boxes")
-        if isinstance(avail, int) and avail > 0:
+        if force_collect:
+            print(f"[*] Mode --force-collect: kirim Collect walau "
+                  f"available_boxes={avail}.")
+        if (isinstance(avail, int) and avail > 0) or force_collect:
             print(f"[*] Ada {avail} kotak — kirim Collect gratis (tanpa iklan).")
             hasil["collect_sent"] = True
             hasil["collect"] = dailybox_request(
@@ -313,6 +317,8 @@ async def main():
     ap.add_argument("--device-id", default=os.getenv("DB_DEVICE_ID", ""))
     ap.add_argument("--status-only", action="store_true",
                     help="Hanya baca status, jangan kirim Collect")
+    ap.add_argument("--force-collect", action="store_true",
+                    help="Kirim Collect walau status menunjukkan 0 kotak")
     args = ap.parse_args()
     if not args.email or not args.password:
         print("[!] email/password bot wajib diisi.")
@@ -322,7 +328,8 @@ async def main():
         try:
             hasil = await dailybox_once(
                 session, args.email, args.password, args.device_id,
-                status_only=args.status_only)
+                status_only=args.status_only,
+                force_collect=args.force_collect)
         except Exception as exc:
             hasil = {"email": args.email, "bot_user_id": BOT_USER_ID,
                      "server": "", "room": None, "player_id": None,
