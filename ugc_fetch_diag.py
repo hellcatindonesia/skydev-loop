@@ -63,8 +63,27 @@ MAX_FRAME = 8 * 1024 * 1024  # dunia besar bisa > 256 KB (batas FrameReader)
 
 
 # ---------------------------------------------------------------- protobuf
+def _varint(buf, i):
+    """Varint sampai 64-bit (10 byte). L.read_varint berhenti di
+    shift 35 (maks 5 byte) sehingga varint 64-bit (mis. nilai
+    negatif int32 yang di-sign-extend, atau field ulong) akan
+    dikira terpotong — itu bug yang membuat parse gagal."""
+    val = 0
+    shift = 0
+    n = len(buf)
+    start = i
+    while i < n and shift < 70:
+        b = buf[i]
+        val |= (b & 0x7F) << shift
+        i += 1
+        if not (b & 0x80):
+            return val, i - start
+        shift += 7
+    return None, 0
+
+
 def _read_varint(buf, i):
-    v, m = L.read_varint(buf, i)
+    v, m = _varint(buf, i)
     if v is None:
         raise ValueError("varint terpotong")
     return v, m
@@ -168,16 +187,62 @@ def _parse_activity_room(buf):
 
 def _parse_activity_data(buf):
     f = _parse_fields(buf)
-    items = [_parse_activity_item(c)
-             for (w, c) in f.get(5, []) if w == 2]
-    rooms = [_parse_activity_room(c)
-             for (w, c) in f.get(6, []) if w == 2]
+    items = []
+    for (w, c) in f.get(5, []):
+        if w != 2:
+            continue
+        try:
+            items.append(_parse_activity_item(c))
+        except Exception as exc:
+            items.append({"parse_error": repr(exc), "raw_hex": c.hex()})
+    rooms = []
+    for (w, c) in f.get(6, []):
+        if w != 2:
+            continue
+        try:
+            rooms.append(_parse_activity_room(c))
+        except Exception as exc:
+            rooms.append({"parse_error": repr(exc), "raw_hex": c.hex()})
     return {"owner_id": _str_field(f, 1),
             "activity_id": _str_field(f, 2),
             "publication_id": _str_field(f, 3),
             "type": _int_field(f, 4),
             "items": items,
             "rooms": rooms}
+
+
+def _dump_generic(buf, depth=0):
+    """Dump struktur protobuf generik (nomor field + wire + nilai
+    ringkas) untuk diagnosis bila parse ketat gagal. Dipakai untuk
+    melihat struktur ASLI respons, bukan tebakan."""
+    try:
+        f = _parse_fields(buf)
+    except Exception as exc:
+        return {"parse_error": repr(exc),
+                "hex_head": bytes(buf[:64]).hex()}
+    out = {}
+    for field, vals in sorted(f.items()):
+        shown = []
+        for w, v in vals:
+            if w == 2:
+                # String printable -> tampilkan sebagai string,
+                # jangan diparse sebagai protobuf nested.
+                try:
+                    s = bytes(v).decode("utf-8")
+                    if s and all(32 <= ord(c) < 127 for c in s):
+                        shown.append(s)
+                        continue
+                except Exception:
+                    pass
+                if depth < 2 and len(v) >= 2:
+                    shown.append(_dump_generic(v, depth + 1))
+                else:
+                    shown.append({"bytes_len": len(v),
+                                  "hex_head": bytes(v[:32]).hex()})
+            else:
+                shown.append(v)
+        out[str(field)] = shown if len(shown) > 1 else shown[0]
+    return out
 
 
 def parse_get_activity_response(data):
@@ -425,6 +490,13 @@ async def ugc_fetch_once(session, email, password, device_id,
             print(f"[!] {hasil['error']}")
             return hasil
         print(f"[+] respons '{RESP_EVENT}' diterima ({len(data)} B).")
+        print("UGCFETCH_RAW_HEX:" + data.hex())
+        try:
+            dump = _dump_generic(data)
+            print("UGCFETCH_DUMP_JSON:" + json.dumps(
+                _jsonable(dump), separators=(",", ":")))
+        except Exception as exc:
+            print(f"[!] dump generik gagal: {exc!r}")
         try:
             parsed = parse_get_activity_response(data)
         except Exception as exc:
@@ -432,9 +504,8 @@ async def ugc_fetch_once(session, email, password, device_id,
             traceback.print_exc()
             hasil["error"] = f"parse respons gagal: {exc!r}"
             hasil["raw_hex_len"] = len(data)
-            print(f"[!] parse gagal: {exc!r} "
-                  f"(raw {len(data)} B, 200 hex pertama: "
-                  f"{data[:100].hex()})")
+            print(f"[!] parse gagal: {exc!r} (raw {len(data)} B, "
+                  f"hex lengkap ada di baris UGCFETCH_RAW_HEX di atas)")
             return hasil
         ad = parsed["activity_data"]
         terrain = {"activity_id": ad["activity_id"],
