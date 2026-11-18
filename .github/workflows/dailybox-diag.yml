@@ -1,0 +1,55 @@
+name: DIAG Daily Box — status + klaim gratis 1 bot tes
+
+# Probe Daily Box (2026-11-18, Bartes): bot pkxdshop membaca status
+# kotak hadiah gratis di toko, lalu klaim bila ada kotak tersedia.
+# Mekanik server ToxicBirdDailyBoxMechanic, RoomEvent "daily_box",
+# reliable=1 — pola identik dengan probe "fw" (Fortune Wheel).
+#   GetStatus = "daily_box" (kosong, 0 byte — EventId=0 default proto3)
+#   Collect   = "daily_box" 08 01 (EventId=1)
+# Respons status: f1 EventId, f2 AvailableBoxes, f3 TimeToNextBox.
+# Respons collect: f1 EventId, f2 Success, f3 AvailableBoxes,
+# f4 TimeToNextBox, f5 Reward (GrantLootBoxRewardResponse: f1 Gift Money,
+# f2 Items repeated int, f3 Wallet Money; Money f1=koin, f2=gems).
+# HANYA klaim GRATIS: Collect (EventId=1) adalah klaim gratisnya —
+# TIDAK ADA varian iklan di request ini, probe ini TIDAK menyentuh
+# iklan sama sekali. Collect HANYA dikirim bila status menunjukkan
+# AvailableBoxes > 0; bila 0, probe berhenti di status.
+# TIDAK perlu destinationUserId (mekanik terdaftar di ToxicBirdClient,
+# bukan room); TIDAK kirim JoinRoom; Bartes tidak perlu online.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Daily Box probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u dailybox_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
