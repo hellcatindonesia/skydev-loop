@@ -308,8 +308,9 @@ async def pizzaquest_once(session, email, password, device_id):
                     + b"\x28\x00"   # AdWatched = false
                     + b"\x30\x01")  # IsThereXpToReceive = true
 
-        def do_quest(n, waypoints):
+        def do_quest(n, waypoints, progressive=False):
             q = {"n": n, "waypoints_tried": list(waypoints),
+                 "progressive": progressive,
                  "created": None, "started": None,
                  "finished": None, "seconds": None}
             t0 = time.time()
@@ -346,41 +347,56 @@ async def pizzaquest_once(session, email, password, device_id):
                 if ints and all(isinstance(x, int) for x in ints):
                     cand_wp = ints
                     break
-            # 2. Start — coba RankSTime dari Create + waypoints yang
-            # dicoba quest ini dulu; bila tak dijawab, coba 90, lalu 0;
-            # terakhir + waypoints Create.
-            # Hipotesis probe 3 (2026-11-19): hadiah kosong di probe 1-2
-            # karena Start dikirim TANPA waypoints (0 antaran) — server
-            # menghitung hadiah dari daftar waypoint yang dikirim.
+            # 2. Start — progresif bila progressive: kirim daftar
+            # waypoint yang SUDAH diantar bertahap ([0] -> [0,1] ->
+            # [0,1,2]), masing-masing dijeda 2 dtk. Bila tidak
+            # progresif: sekali kirim penuh.
+            # Hipotesis probe 4 (2026-11-19): probe 3 membuktikan
+            # server MEMVALIDASI waypoint ([0,1,2] diterima + digema,
+            # [1,2,3] ditolak tanpa respons) tapi hadiah tetap kosong —
+            # mungkin server menghitung progres dari Start yang dikirim
+            # bertahap per antaran, bukan sekali penuh di awal.
+            def try_start(step_wps):
+                _tried = set()
+                for rank_s_time_try, wps, tag in (
+                        (rank_s_time, step_wps,
+                         f"RankSTime={rank_s_time}+wp{step_wps}"),
+                        (90, step_wps, f"RankSTime=90+wp{step_wps}"),
+                        (0, [], "RankSTime=0"),
+                        (90, cand_wp, "RankSTime=90+waypoints Create")):
+                    _key = (rank_s_time_try, tuple(wps))
+                    if _key in _tried:
+                        continue
+                    _tried.add(_key)
+                    if tag.startswith("RankSTime=90+waypoints") \
+                            and not cand_wp:
+                        continue
+                    name, data = pizza_request(
+                        f"Start #{n} ({tag})",
+                        build_start(rank_s_time_try, wps))
+                    if data is not None and name == "pizza_started":
+                        st = parse_started(data)
+                        st["rank_s_time_sent"] = rank_s_time_try
+                        st["waypoints_sent"] = list(wps)
+                        return st
+                return None
+
+            steps = ([[waypoints[0]], waypoints[:2], waypoints]
+                     if progressive else [waypoints])
             started = None
-            _tried = set()
-            for rank_s_time_try, wps, tag in (
-                    (rank_s_time, waypoints,
-                     f"RankSTime={rank_s_time}+wp{waypoints}"),
-                    (90, waypoints, f"RankSTime=90+wp{waypoints}"),
-                    (0, [], "RankSTime=0"),
-                    (90, cand_wp, "RankSTime=90+waypoints Create")):
-                if started is not None:
+            for si, step in enumerate(steps):
+                started = try_start(step)
+                if started is None:
+                    print(f"[!] Start #{n} langkah {si + 1} {step}: "
+                          "TIDAK ADA respons pizza_started.")
                     break
-                _key = (rank_s_time_try, tuple(wps))
-                if _key in _tried:
-                    continue
-                _tried.add(_key)
-                if tag.startswith("RankSTime=90+waypoints") and not cand_wp:
-                    continue
-                name, data = pizza_request(
-                    f"Start #{n} ({tag})",
-                    build_start(rank_s_time_try, wps))
-                if data is not None and name == "pizza_started":
-                    started = parse_started(data)
-                    started["rank_s_time_sent"] = rank_s_time_try
-                    started["waypoints_sent"] = wps
+                print(f"[+] Started #{n} langkah {si + 1}: {started}")
+                if si < len(steps) - 1:
+                    time.sleep(2)
             if started is None:
-                print(f"[!] Start #{n}: TIDAK ADA respons pizza_started.")
                 q["seconds"] = round(time.time() - t0, 1)
                 return q
             q["started"] = started
-            print(f"[+] Started #{n}: {started}")
             # 3. Tunggu validasi server (~5 dtk), lalu Finish.
             print(f"[*] tunggu {WAIT_AFTER_START} dtk (validasi server)...")
             time.sleep(WAIT_AFTER_START)
@@ -389,9 +405,10 @@ async def pizzaquest_once(session, email, password, device_id):
                 print(f"[!] Start #{n} tanpa quest_id — Finish batal.")
                 q["seconds"] = round(time.time() - t0, 1)
                 return q
+            total_time = 11 if progressive else FINISH_TOTAL_TIME
             name, data = pizza_request(
-                f"Finish #{n} (TotalTime={FINISH_TOTAL_TIME})",
-                build_finish(qid, FINISH_TOTAL_TIME))
+                f"Finish #{n} (TotalTime={total_time})",
+                build_finish(qid, total_time))
             if data is not None and name == "pizza_finished":
                 q["finished"] = parse_finished(data)
                 print(f"[+] Finished #{n}: {q['finished']}")
@@ -403,13 +420,13 @@ async def pizzaquest_once(session, email, password, device_id):
             q["seconds"] = round(time.time() - t0, 1)
             return q
 
-        # Quest 1 pakai waypoints [0,1,2], quest 2 pakai [1,2,3] —
-        # dua tebakan ID waypoint paling mungkin dalam satu run.
-        hasil["quests"].append(do_quest(1, [0, 1, 2]))
-        # Quest ke-2: uji apakah masih dibayar (batas harian?) + set
-        # waypoint kedua.
+        # Probe 4: kedua quest progresif dengan waypoint valid [0,1,2]
+        # ([0] -> [0,1] -> [0,1,2]). Kontrol (sekali kirim penuh)
+        # sudah terbukti kosong di probe 3.
+        hasil["quests"].append(do_quest(1, [0, 1, 2], progressive=True))
+        # Quest ke-2: uji apakah masih dibayar (batas harian?).
         if hasil["quests"][0].get("finished"):
-            hasil["quests"].append(do_quest(2, [1, 2, 3]))
+            hasil["quests"].append(do_quest(2, [0, 1, 2], progressive=True))
         else:
             print("[*] Quest 1 gagal — quest 2 tidak dicoba.")
     finally:
