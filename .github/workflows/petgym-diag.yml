@@ -43,6 +43,10 @@ on:
         description: "Suntik field durasi (detik) ke request accelerate; 0 = normal"
         required: false
         default: "0"
+      currency:
+        description: "Accelerate pakai GEMS (1 = ya); 0 = pakai iklan"
+        required: false
+        default: "0"
 
 jobs:
   diag:
@@ -70,4 +74,5 @@ jobs:
           DB_INJECT_SECONDS: ${{ inputs.inject_seconds }}
         run: |
           if [ "${{ inputs.list_pets }}" = "1" ]; then LIST="--list-pets"; else LIST=""; fi
-          python -u petgym_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --accelerate "${{ inputs.accelerate }}" --train "${{ inputs.train_pet_id }}" --inject-seconds "${{ inputs.inject_seconds }}" $LIST
+          if [ "${{ inputs.currency }}" = "1" ]; then CUR="--currency"; else CUR=""; fi
+          python -u petgym_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --accelerate "${{ inputs.accelerate }}" --train "${{ inputs.train_pet_id }}" --inject-seconds "${{ inputs.inject_seconds }}" $LIST $CUR
