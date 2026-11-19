@@ -1,0 +1,62 @@
+name: DIAG Pet Gym — cek batas iklan accelerate (akun pkxdshop)
+
+# Probe Pet Gym training (2026-11-19, Bartes): apakah batas iklan
+# accelerate benar 3x (MAX_ADS=3 di dump) atau bisa lebih?
+# Wire (dump_3): RoomEvent "petGym" (ToxicBirdPetGymMechanic).
+# EventId: TrainPet=0, CurrentTraining=1, Acceleration=2, Complete=3.
+# AccelerationType: Ads=0, Currency=1.
+# GetCurrentTraining = 08 01. Accelerate Ads = 08 02 + 1a <len> <petId>.
+# Respons Acceleration: f1 eventId, f2 success, f3 TrainingData
+# (PetGymTrainingPetData: f1 petId, f2 remainingTime, f3 progress,
+# f4 numberOfWatchedAds, f5 accelPrice), f4 spent, f5 wallet.
+# Dump: TIME_TO_ACCELERATE=60 (menit), MAX_ADS=3.
+# Mode default: status saja (read-only). Accelerate hanya bila diminta
+# (iklan = gratis, tidak pakai gems). Train hanya bila tidak ada pet
+# yang sedang training.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+password: <redacted>
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      accelerate:
+        description: "Jumlah accelerate via IKLAN (Ads=0); 0 = status saja"
+        required: false
+        default: "0"
+      train_pet_id:
+        description: "Pet ID untuk mulai training (kosong = jangan mulai)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Pet Gym probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+DB_PASSWORD: <redacted>
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+          DB_ACCELERATE: ${{ inputs.accelerate }}
+          DB_TRAIN_PET_ID: ${{ inputs.train_pet_id }}
+        run: |
+          python -u petgym_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --accelerate "${{ inputs.accelerate }}" --train "${{ inputs.train_pet_id }}"
