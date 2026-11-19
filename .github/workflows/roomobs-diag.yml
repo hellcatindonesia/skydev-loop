@@ -1,0 +1,52 @@
+name: DIAG Room Observasi — cari NPC pizza di Plaza 1 bot tes
+
+# Probe observasi room (2026-11-19, Bartes): bot pkxdshop join Plaza
+# (alokasi default), umumkan diri, lalu AMATI 45 dtk tanpa kirim
+# quest apa pun. Tujuannya menemukan NPC pizza (ID + posisi) untuk
+# bedah pizza quest — server memvalidasi waypoint tapi hadiah tetap
+# kosong, jadi antaran kemungkinan dilacak lewat posisi pemain di
+# dekat NPC (delivery radius) atau user variable.
+# Yang dicatat: event 'C' (batch posisi) -> cluster STATIONER
+# (NPC diam; pemain bergerak); semua nama RoomEvent; sub-frame batch
+# 0x0d (cari string "pizza"/"npc"). Nama pemain lain TIDAK dicetak.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      seconds:
+        description: "Lama observasi (detik)"
+        required: false
+        default: "45"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Room Observasi probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u roomobs_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --seconds "${{ inputs.seconds }}"
