@@ -1,0 +1,48 @@
+name: DIAG Fruit Quest — baca quest + limit harian 1 bot tes
+
+# Probe Fruit Quest (2026-11-19, Bartes): bot pkxdshop membaca limit
+# harian + 1x Request quest buah, lalu Cancel (baca-saja, tidak Start,
+# tidak kumpulkan buah, tidak klaim hadiah).
+# RoomEvent "fruit", FruitEventId: Request=0, Start=1, Cancel=2,
+# GetCount=3, Recharge=4, MarkFinished=5, GetReward=6.
+# CreateFruitQuestResponse: f1 QuestId, f2 Items, f3 Amounts,
+# f5 Timeout, f6 XpToReceive.
+# Hadiah quest berisi QuestReward yang sama dengan Crazy Run
+# (XpEarned + CurrentPetXp) — jalur XP pet-nya nyata di dump.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Fruit Quest probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u fruitquest_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
