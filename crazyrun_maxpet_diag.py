@@ -503,10 +503,10 @@ async def main():
                     and state["stage"] == 4):
                 state["stop_reason"] = "MAX TERCAPAI (xp>=320, stage 4)"
                 break
-            if state["energy"] is not None and state["energy"] < 0.95:
-                state["stop_reason"] = (
-                    f"ENERGI HABIS ({state['energy']:.2f})")
-                break
+            # Energi TIDAK dipakai sebagai batas (koreksi Bartes
+            # 2026-11-19 10:59: energi hanya untuk reward harian,
+            # main Crazy Run bisa tanpa batas). Energi tetap dicatat
+            # sebagai info saja.
             # stage-up dulu bila XP sudah di cap stage saat ini
             if state["xp"] is not None and state["stage"] == 2 \
                     and state["xp"] >= 120:
