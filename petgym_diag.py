@@ -318,7 +318,8 @@ def parse_current_response(data):
 
 async def petgym_once(session, email, password, device_id,
                       accelerate=0, train_pet_id=None,
-                      list_pets=False, inject_seconds=0):
+                      list_pets=False, inject_seconds=0,
+                      currency=False):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "login_ok": False, "deviceid_sent": False,
              "pets": [], "current": None, "accelerations": [],
@@ -457,18 +458,22 @@ async def petgym_once(session, email, password, device_id,
             pet_id = train_pet_id
             print(f"[+] TrainPet: {hasil['train']}")
 
-        # 3. Accelerate via iklan (Ads=0), berulang.
+        # 3. Accelerate (Ads=0 atau Currency=1 bila --currency), berulang.
         # Bila inject_seconds>0, tambahkan field f4 = detik (varint) ke
         # request — field ini TIDAK ADA di protobuf asli; tujuannya
         # menguji apakah server menghormati durasi dari client (2 jam)
         # atau tetap memotong 1 jam.
         if accelerate and pet_id:
             for n in range(1, accelerate + 1):
-                payload = bytes.fromhex("0802") + _str_field(3, pet_id)
+                payload = bytes.fromhex("0802")
+                if currency:
+                    payload += bytes([0x10, 0x01])
+                payload += _str_field(3, pet_id)
                 if inject_seconds:
                     payload += bytes([0x20]) + _varint_bytes(inject_seconds)
+                kind = "Currency(gems)" if currency else "Ads"
                 r = petgym_request(
-                    f"Accelerate-Ads #{n} pet={pet_id}"
+                    f"Accelerate-{kind} #{n} pet={pet_id}"
                     f"{' [inject ' + str(inject_seconds) + 's]' if inject_seconds else ''}",
                     payload, parse_accel_response)
                 hasil["accelerations"].append(r)
@@ -476,7 +481,8 @@ async def petgym_once(session, email, password, device_id,
                 print(f"[+] Accel #{n}: success={(r or {}).get('success')} "
                       f"sisa={t.get('remaining_time')} "
                       f"ads={t.get('ads_watched')} "
-                      f"spent={(r or {}).get('spent')}")
+                      f"spent={(r or {}).get('spent')} "
+                      f"wallet={(r or {}).get('wallet')}")
                 if r is None or (r or {}).get("success") is False:
                     print(f"[!] Accelerate #{n} GAGAL/tiada respons "
                           f"— berhenti di sini.")
@@ -497,6 +503,7 @@ async def main():
     ap.add_argument("--train", default=None)
     ap.add_argument("--list-pets", action="store_true")
     ap.add_argument("--inject-seconds", type=int, default=0)
+    ap.add_argument("--currency", action="store_true")
     ap.add_argument("--email", default=None)
     ap.add_argument("--password", default=None)
     ap.add_argument("--device-id", default=None)
@@ -516,7 +523,8 @@ async def main():
             session, email, password, device_id,
             accelerate=args.accelerate, train_pet_id=args.train,
             list_pets=args.list_pets,
-            inject_seconds=args.inject_seconds)
+            inject_seconds=args.inject_seconds,
+            currency=args.currency)
     print("PETGYM_JSON_BEGIN")
     print(json.dumps(hasil, ensure_ascii=False, default=str))
     print("PETGYM_JSON_END")
