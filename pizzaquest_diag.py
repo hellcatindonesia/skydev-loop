@@ -325,30 +325,49 @@ async def pizzaquest_once(session, email, password, device_id):
                 print(f"[!] Create #{n}: TIDAK ADA respons.")
                 q["seconds"] = round(time.time() - t0, 1)
                 return q
-            # Waypoints kandidat dari respons Create (bila ada field
-            # repeated-int).
+            # RankSTime + waypoints kandidat dari respons Create.
+            # Pelajaran probe 1 (run 44474816303): Create f2 = pesan
+            # {f2: 15, f4: buff 1.0x4} — 15 diduga RankSTime (batas waktu
+            # rank S). Start dengan RankSTime=0 memberi Finished dengan
+            # Reward KOSONG (rank gagal?) — jadi kirim RankSTime dari
+            # Create dulu.
             cand_wp = []
-            for _k, _v in (q["created"]["fields"] or {}).items():
+            rank_s_time = 0
+            _cf = q["created"]["fields"] or {}
+            _f2 = _cf.get("2")
+            if isinstance(_f2, dict):
+                try:
+                    rank_s_time = int(_f2.get("2") or 0)
+                except Exception:
+                    rank_s_time = 0
+            for _k, _v in _cf.items():
                 ints = _ints(_v)
                 if ints and all(isinstance(x, int) for x in ints):
                     cand_wp = ints
                     break
-            # 2. Start — coba RankSTime=0 + waypoints kosong; bila tak
-            # dijawab, coba RankSTime=90; lalu waypoints dari Create.
+            # 2. Start — coba RankSTime dari Create dulu; bila tak
+            # dijawab, coba 90, lalu 0; terakhir + waypoints Create.
             started = None
-            for rank_s_time, wps, tag in (
-                    (0, [], "RankSTime=0"),
+            _tried = set()
+            for rank_s_time_try, wps, tag in (
+                    (rank_s_time, [], f"RankSTime={rank_s_time} (Create)"),
                     (90, [], "RankSTime=90"),
+                    (0, [], "RankSTime=0"),
                     (90, cand_wp, "RankSTime=90+waypoints Create")):
                 if started is not None:
                     break
+                _key = (rank_s_time_try, tuple(wps))
+                if _key in _tried:
+                    continue
+                _tried.add(_key)
                 if tag.startswith("RankSTime=90+waypoints") and not cand_wp:
                     continue
                 name, data = pizza_request(
-                    f"Start #{n} ({tag})", build_start(rank_s_time, wps))
+                    f"Start #{n} ({tag})",
+                    build_start(rank_s_time_try, wps))
                 if data is not None and name == "pizza_started":
                     started = parse_started(data)
-                    started["rank_s_time_sent"] = rank_s_time
+                    started["rank_s_time_sent"] = rank_s_time_try
                     started["waypoints_sent"] = wps
             if started is None:
                 print(f"[!] Start #{n}: TIDAK ADA respons pizza_started.")
