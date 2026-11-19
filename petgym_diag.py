@@ -363,7 +363,8 @@ async def main():
         return
     device_id = args.device_id or os.environ.get(
         "DB_DEVICE_ID") or DEFAULT_DEVICE_ID
-    async with L.aiohttp.ClientSession() as session:
+    async with L.AsyncSession(impersonate="chrome110",
+                              verify=False) as session:
         hasil = await petgym_once(
             session, email, password, device_id,
             accelerate=args.accelerate, train_pet_id=args.train)
