@@ -512,15 +512,21 @@ async def main():
                     and state["xp"] >= 120:
                 print("[*] XP 120 di stage Baby — StageUp ke Child dulu.")
                 if not stage_up():
-                    state["stop_reason"] = "StageUp Baby->Child GAGAL"
-                    break
+                    print("[*] StageUp belum berubah — coba sekali lagi.")
+                    time.sleep(5)
+                    if not stage_up():
+                        state["stop_reason"] = "StageUp Baby->Child GAGAL"
+                        break
                 continue
             if state["xp"] is not None and state["stage"] == 3 \
                     and state["xp"] >= 320:
                 print("[*] XP 320 di stage Child — StageUp ke Teen dulu.")
                 if not stage_up():
-                    state["stop_reason"] = "StageUp Child->Teen GAGAL"
-                    break
+                    print("[*] StageUp belum berubah — coba sekali lagi.")
+                    time.sleep(5)
+                    if not stage_up():
+                        state["stop_reason"] = "StageUp Child->Teen GAGAL"
+                        break
                 continue
             xp_before = state["xp"]
             # JoinGame
@@ -567,15 +573,34 @@ async def main():
             state["runs_done"] += 1
             gained = (None if xp_before is None or state["xp"] is None
                       else state["xp"] - xp_before)
+            if gained == 0 and state["xp"] is not None \
+                    and state["xp"] < args.target_xp:
+                # Pet list lambat update (run 44455410904: baca pertama
+                # 60, baca berikutnya 90) — tunggu 8 dtk + baca ulang
+                # sebelum menyimpulkan stall.
+                print("[!] XP tampak tidak naik — tunggu 8 dtk, baca ulang.")
+                time.sleep(8)
+                baca_xp_pet()
+                gained = (None if xp_before is None or state["xp"] is None
+                          else state["xp"] - xp_before)
             print(f"[=] RUN {state['runs_done']}: xp {xp_before} -> "
                   f"{state['xp']} (+{gained}) | stage={state['stage']} | "
                   f"energi={state['energy']} | RunCount={state['run_count']}")
             if gained == 0 and state["xp"] is not None \
                     and state["xp"] < args.target_xp:
-                print("[!] XP tidak naik — coba StageUp sekali.")
-                if not stage_up():
-                    state["stop_reason"] = "XP STALL + StageUp gagal"
+                # Benar-benar stall: coba StageUp, tapi JANGAN berhenti
+                # bila StageUp tidak mengubah stage (bisa jadi cap
+                # bukan di angka itu / XP telat) — lanjut run berikut;
+                # bila 2 run berturut-turut stall, loop max-runs yang
+                # menghentikan.
+                print("[!] XP tetap tidak naik — coba StageUp sekali.")
+                stage_up()
+                state["stalls"] = state.get("stalls", 0) + 1
+                if state["stalls"] >= 2:
+                    state["stop_reason"] = "XP STALL 2x berturut-turut"
                     break
+            else:
+                state["stalls"] = 0
         if not state["stop_reason"]:
             state["stop_reason"] = f"max-runs ({args.max_runs}) tercapai"
         try:
