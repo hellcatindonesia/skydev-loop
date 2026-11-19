@@ -193,15 +193,21 @@ def _raw_fields(buf):
                 shift += 7
                 if not (b & 0x80):
                     break
+            if ln < 0 or i + ln > n:
+                break
             chunk = buf[i:i + ln]
             i += ln
             yield field, wire, chunk
         elif wire == 5:
             raw = buf[i:i + 4]
+            if len(raw) < 4:
+                break
             i += 4
             yield field, wire, struct.unpack("<f", raw)[0]
         elif wire == 1:
             raw = buf[i:i + 8]
+            if len(raw) < 8:
+                break
             i += 8
             yield field, wire, struct.unpack("<d", raw)[0]
         else:
