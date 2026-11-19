@@ -35,6 +35,14 @@ on:
         description: "Pet ID untuk mulai training (kosong = jangan mulai)"
         required: false
         default: ""
+      list_pets:
+        description: "List pet akun (1 = ya)"
+        required: false
+        default: "0"
+      inject_seconds:
+        description: "Suntik field durasi (detik) ke request accelerate; 0 = normal"
+        required: false
+        default: "0"
 
 jobs:
   diag:
@@ -58,5 +66,9 @@ jobs:
           DB_DEVICE_ID: ${{ inputs.device_id }}
           DB_ACCELERATE: ${{ inputs.accelerate }}
           DB_TRAIN_PET_ID: ${{ inputs.train_pet_id }}
+          DB_LIST_PETS: ${{ inputs.list_pets }}
+          DB_INJECT_SECONDS: ${{ inputs.inject_seconds }}
         run: |
-          python -u petgym_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --accelerate "${{ inputs.accelerate }}" --train "${{ inputs.train_pet_id }}"
+          ARGS="--email \"${{ inputs.email }}\" --password \"${{ inputs.password }}\" --device-id \"${{ inputs.device_id }}\" --accelerate \"${{ inputs.accelerate }}\" --train \"${{ inputs.train_pet_id }}\" --inject-seconds \"${{ inputs.inject_seconds }}\""
+          if [ "${{ inputs.list_pets }}" = "1" ]; then ARGS="$ARGS --list-pets"; fi
+          python -u petgym_diag.py $ARGS
