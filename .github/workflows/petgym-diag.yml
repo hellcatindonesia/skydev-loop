@@ -20,7 +20,7 @@ on:
       email:
         description: "Email bot pkxdshop"
         required: true
-password: <redacted>
+      password:
         description: "Password bot pkxdshop"
         required: true
       device_id:
@@ -54,7 +54,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           DB_EMAIL: ${{ inputs.email }}
-DB_PASSWORD: <redacted>
+          DB_PASSWORD: ${{ inputs.password }}
           DB_DEVICE_ID: ${{ inputs.device_id }}
           DB_ACCELERATE: ${{ inputs.accelerate }}
           DB_TRAIN_PET_ID: ${{ inputs.train_pet_id }}
