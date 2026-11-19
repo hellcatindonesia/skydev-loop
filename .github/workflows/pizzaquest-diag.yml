@@ -1,0 +1,49 @@
+name: DIAG Pizza Quest — selesaikan 2 quest 1 bot tes
+
+# Probe Pizza Quest (2026-11-19, Bartes): bot pkxdshop menyelesaikan
+# 2 quest pizza berurutan (Create/Start/tunggu 6 dtk/Finish) untuk
+# mengukur XP pet per quest, waktu per quest, dan apakah quest ke-2
+# masih dibayar (uji batas harian).
+# RoomEvent "pizza", PizzaEventType: Started=0, Finished=1, Created=2.
+# Respons: "pizza_created", "pizza_started" (f3 XpToReceive),
+# "pizza_finished" (f4 Reward = QuestReward: XpEarned + CurrentPetXp).
+# Validasi server (pengalaman mod Bartes): finish langsung = 0 reward;
+# jeda ~5 dtk = berhasil. Probe memakai TotalTime=6.
+# Pet aktif saat ini (type 2) sudah MAX — XpEarned tetap terbaca.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run Pizza Quest probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+        run: |
+          python -u pizzaquest_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
