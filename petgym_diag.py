@@ -151,6 +151,110 @@ def _money_str(m):
     return " + ".join(parts) if parts else "0"
 
 
+def build_pet_page_request(page_size=100, page_key=""):
+    """PageRequest utk list pet (dari pet_list_diag.py)."""
+    inner = b"\x08" + L.varint(0)
+    inner += b"\x12" + L.varint(0)
+    pk = page_key.encode("utf-8")
+    out = b"\x08" + L.varint(0)
+    out += b"\x12" + L.varint(len(pk)) + pk
+    out += b"\x18" + L.varint(page_size)
+    out += b"\x22" + L.varint(len(inner)) + inner
+    return out
+
+
+def _raw_fields(buf):
+    """Yield (field_no, wire_type, value) generik."""
+    i = 0
+    n = len(buf)
+    while i < n:
+        tag = buf[i]
+        i += 1
+        field = tag >> 3
+        wire = tag & 7
+        if wire == 0:
+            val = 0
+            shift = 0
+            while i < n:
+                b = buf[i]
+                i += 1
+                val |= (b & 0x7F) << shift
+                shift += 7
+                if not (b & 0x80):
+                    break
+            yield field, wire, val
+        elif wire == 2:
+            ln = 0
+            shift = 0
+            while i < n:
+                b = buf[i]
+                i += 1
+                ln |= (b & 0x7F) << shift
+                shift += 7
+                if not (b & 0x80):
+                    break
+            chunk = buf[i:i + ln]
+            i += ln
+            yield field, wire, chunk
+        elif wire == 5:
+            raw = buf[i:i + 4]
+            i += 4
+            yield field, wire, struct.unpack("<f", raw)[0]
+        elif wire == 1:
+            raw = buf[i:i + 8]
+            i += 8
+            yield field, wire, struct.unpack("<d", raw)[0]
+        else:
+            break
+
+
+def _parse_petdata(data):
+    pet = {"pet_id": None, "display_name": None,
+           "type": None, "owner_id": None, "stage": None}
+    for f3, w3, v3 in _raw_fields(bytes(data)):
+        if f3 == 1 and w3 == 2:
+            try:
+                pet["owner_id"] = bytes(v3).decode("utf-8")
+            except Exception:
+                pass
+        elif f3 == 3 and w3 == 2:
+            try:
+                pet["pet_id"] = bytes(v3).decode("utf-8")
+            except Exception:
+                pass
+        elif f3 == 4 and w3 == 2:
+            try:
+                pet["display_name"] = bytes(v3).decode("utf-8")
+            except Exception:
+                pass
+        elif f3 == 6 and w3 == 0:
+            pet["stage"] = v3
+        elif f3 == 12 and w3 == 0:
+            pet["type"] = v3
+    return pet
+
+
+def extract_pets_from_event(data):
+    """Dari respons RoomEvent 'pet': GetPetsResponse langsung (f1=8)
+    atau PageResponse (f3 = GetPetsResponse). Kembalikan list pet."""
+    pets = []
+    for fno, wt, v in _raw_fields(data):
+        if fno == 1 and wt == 0 and v == 8:
+            for f2, w2, v2 in _raw_fields(data):
+                if f2 == 4 and w2 == 2:
+                    p = _parse_petdata(bytes(v2))
+                    if p["pet_id"]:
+                        pets.append(p)
+            return pets
+        if fno == 3 and wt == 2:
+            for f2, w2, v2 in _raw_fields(bytes(v)):
+                if f2 == 4 and w2 == 2:
+                    p = _parse_petdata(bytes(v2))
+                    if p["pet_id"]:
+                        pets.append(p)
+    return pets
+
+
 def parse_training_data(d):
     """PetGymTrainingPetData (nested dict dari parse generik)."""
     if not isinstance(d, dict):
@@ -207,11 +311,12 @@ def parse_current_response(data):
 
 
 async def petgym_once(session, email, password, device_id,
-                      accelerate=0, train_pet_id=None):
+                      accelerate=0, train_pet_id=None,
+                      list_pets=False, inject_seconds=0):
     hasil = {"email": email, "bot_user_id": BOT_USER_ID,
              "login_ok": False, "deviceid_sent": False,
-             "current": None, "accelerations": [], "train": None,
-             "error": None}
+             "pets": [], "current": None, "accelerations": [],
+             "train": None, "error": None}
     user_jwt, alloc = await L.login_and_allocate(email, password, device_id,
                                                  session)
     if not alloc:
@@ -298,6 +403,33 @@ async def petgym_once(session, email, password, device_id,
                       f"(percobaan {attempt}/2).")
             return None
 
+        # 0. Daftar pet (bila diminta) — untuk cari pet yg bisa dilatih.
+        if list_pets:
+            req = build_pet_page_request()
+            for cmd in ("pet", "pets"):
+                try:
+                    sock.sendall(L.build_room_event_varint(cmd, req))
+                except Exception as exc:
+                    print(f"[!] kirim list pet via '{cmd}' gagal: {exc}")
+                    continue
+                print(f"[*] kirim PageRequest via RoomEvent '{cmd}' "
+                      f"({len(req)} B), tunggu 6 dtk...")
+                frames = fr.drain(6)
+                for f in frames:
+                    ev_name, d = G.decode_room_event(f)
+                    if ev_name in ("pet", "pets") and d:
+                        got = extract_pets_from_event(d)
+                        for p in got:
+                            if p["pet_id"] not in {
+                                    x["pet_id"] for x in hasil["pets"]}:
+                                hasil["pets"].append(p)
+                                print(f"[+] pet: id={p['pet_id']} "
+                                      f"type={p['type']} "
+                                      f"name={p['display_name']!r} "
+                                      f"stage={p['stage']}")
+                if hasil["pets"]:
+                    break
+
         # 1. Status training saat ini.
         hasil["current"] = petgym_request(
             "GetCurrentTraining (EventId=1)", bytes.fromhex("0801"),
@@ -320,12 +452,19 @@ async def petgym_once(session, email, password, device_id,
             print(f"[+] TrainPet: {hasil['train']}")
 
         # 3. Accelerate via iklan (Ads=0), berulang.
+        # Bila inject_seconds>0, tambahkan field f4 = detik (varint) ke
+        # request — field ini TIDAK ADA di protobuf asli; tujuannya
+        # menguji apakah server menghormati durasi dari client (2 jam)
+        # atau tetap memotong 1 jam.
         if accelerate and pet_id:
             for n in range(1, accelerate + 1):
                 payload = bytes.fromhex("0802") + _str_field(3, pet_id)
+                if inject_seconds:
+                    payload += bytes([0x20]) + _varint_bytes(inject_seconds)
                 r = petgym_request(
-                    f"Accelerate-Ads #{n} pet={pet_id}", payload,
-                    parse_accel_response)
+                    f"Accelerate-Ads #{n} pet={pet_id}"
+                    f"{' [inject ' + str(inject_seconds) + 's]' if inject_seconds else ''}",
+                    payload, parse_accel_response)
                 hasil["accelerations"].append(r)
                 t = (r or {}).get("training") or {}
                 print(f"[+] Accel #{n}: success={(r or {}).get('success')} "
@@ -350,6 +489,8 @@ async def main():
     ap.add_argument("--status-only", action="store_true")
     ap.add_argument("--accelerate", type=int, default=0)
     ap.add_argument("--train", default=None)
+    ap.add_argument("--list-pets", action="store_true")
+    ap.add_argument("--inject-seconds", type=int, default=0)
     ap.add_argument("--email", default=None)
     ap.add_argument("--password", default=None)
     ap.add_argument("--device-id", default=None)
@@ -367,7 +508,9 @@ async def main():
                               verify=False) as session:
         hasil = await petgym_once(
             session, email, password, device_id,
-            accelerate=args.accelerate, train_pet_id=args.train)
+            accelerate=args.accelerate, train_pet_id=args.train,
+            list_pets=args.list_pets,
+            inject_seconds=args.inject_seconds)
     print("PETGYM_JSON_BEGIN")
     print(json.dumps(hasil, ensure_ascii=False, default=str))
     print("PETGYM_JSON_END")
