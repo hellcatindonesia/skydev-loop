@@ -308,8 +308,9 @@ async def pizzaquest_once(session, email, password, device_id):
                     + b"\x28\x00"   # AdWatched = false
                     + b"\x30\x01")  # IsThereXpToReceive = true
 
-        def do_quest(n):
-            q = {"n": n, "created": None, "started": None,
+        def do_quest(n, waypoints):
+            q = {"n": n, "waypoints_tried": list(waypoints),
+                 "created": None, "started": None,
                  "finished": None, "seconds": None}
             t0 = time.time()
             # 1. Create
@@ -345,13 +346,18 @@ async def pizzaquest_once(session, email, password, device_id):
                 if ints and all(isinstance(x, int) for x in ints):
                     cand_wp = ints
                     break
-            # 2. Start — coba RankSTime dari Create dulu; bila tak
-            # dijawab, coba 90, lalu 0; terakhir + waypoints Create.
+            # 2. Start — coba RankSTime dari Create + waypoints yang
+            # dicoba quest ini dulu; bila tak dijawab, coba 90, lalu 0;
+            # terakhir + waypoints Create.
+            # Hipotesis probe 3 (2026-11-19): hadiah kosong di probe 1-2
+            # karena Start dikirim TANPA waypoints (0 antaran) — server
+            # menghitung hadiah dari daftar waypoint yang dikirim.
             started = None
             _tried = set()
             for rank_s_time_try, wps, tag in (
-                    (rank_s_time, [], f"RankSTime={rank_s_time} (Create)"),
-                    (90, [], "RankSTime=90"),
+                    (rank_s_time, waypoints,
+                     f"RankSTime={rank_s_time}+wp{waypoints}"),
+                    (90, waypoints, f"RankSTime=90+wp{waypoints}"),
                     (0, [], "RankSTime=0"),
                     (90, cand_wp, "RankSTime=90+waypoints Create")):
                 if started is not None:
@@ -397,10 +403,13 @@ async def pizzaquest_once(session, email, password, device_id):
             q["seconds"] = round(time.time() - t0, 1)
             return q
 
-        hasil["quests"].append(do_quest(1))
-        # Quest ke-2: uji apakah masih dibayar (batas harian?).
+        # Quest 1 pakai waypoints [0,1,2], quest 2 pakai [1,2,3] —
+        # dua tebakan ID waypoint paling mungkin dalam satu run.
+        hasil["quests"].append(do_quest(1, [0, 1, 2]))
+        # Quest ke-2: uji apakah masih dibayar (batas harian?) + set
+        # waypoint kedua.
         if hasil["quests"][0].get("finished"):
-            hasil["quests"].append(do_quest(2))
+            hasil["quests"].append(do_quest(2, [1, 2, 3]))
         else:
             print("[*] Quest 1 gagal — quest 2 tidak dicoba.")
     finally:
