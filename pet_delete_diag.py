@@ -47,6 +47,24 @@ def build_delete_pet_request(owner_id, pet_id):
     return out
 
 
+def _jwt_user_id(user_jwt):
+    """Ambil userId dari payload JWT login (klaim userId/sub/dll).
+    Diperlukan karena respons GetPetsResponse langsung TIDAK menyertakan
+    f1 OwnerId di PetData (terbukti run list-only: owner_id null semua),
+    padahal DeletePetRequest wajib membawa OwnerId (userId pemilik)."""
+    try:
+        import base64
+        parts = user_jwt.split(".")
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload))
+        for key in ("userId", "sub", "uid", "user_id", "id"):
+            if data.get(key):
+                return str(data[key])
+    except Exception:
+        pass
+    return None
+
+
 def parse_delete_response(data):
     """Parse DeletePetResponse dari payload RoomEvent. Kembalikan dict
     atau None bila f1 != 22."""
@@ -84,6 +102,8 @@ async def delete_diag_once(session, email, password, device_id,
     if not alloc:
         hasil["error"] = "login/alokasi gagal"
         return hasil
+    jwt_owner = _jwt_user_id(user_jwt)
+    print(f"[*] owner dari JWT login: {'ada' if jwt_owner else 'TIDAK ketemu'}")
     host, port = L.find_host_port(alloc)
     if not host or not port:
         hasil["error"] = "host/port tidak ketemu di allocation"
@@ -169,9 +189,9 @@ async def delete_diag_once(session, email, password, device_id,
                   f"(id={pet_id} stage={stage} xp={xp})")
             return hasil
 
-    owner_id = target.get("owner_id") or ""
+    owner_id = target.get("owner_id") or jwt_owner or ""
     if not owner_id:
-        hasil["refused"] = "owner_id target kosong di daftar"
+        hasil["refused"] = "owner_id target kosong dan JWT tidak membawa userId"
         print(f"[!] DITOLAK: {hasil['refused']}")
         return hasil
     req = build_delete_pet_request(owner_id, pet_id)
