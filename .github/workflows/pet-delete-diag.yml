@@ -1,0 +1,53 @@
+name: DIAG Pet Delete (1 bot)
+
+# Diag sekali jalan (bukan produksi): 1 bot, login -> daftar pet ->
+# (bila PET_ID + CONFIRM=1) kirim DeletePetRequest SEKALI -> daftar ulang
+# untuk verifikasi pet benar-benar hilang.
+# Dibuat 2026-11-26 atas permintaan Bartes. Tanpa PET_ID + CONFIRM=1,
+# script HANYA menampilkan daftar (list-only) dan TIDAK menghapus apa pun.
+# Pengaman di script: tolak telur / pet MAX / bentuk spesial tanpa FORCE=1.
+# Hapus pet itu permanen — jalankan mode delete hanya untuk pet yang
+# sudah dipilih Bartes dari daftar segar. Kredensial bot via input
+# (akun Gmail mandiri, TIDAK ada di panel DB).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot (akun yang dicek/dihapus pet-nya)"
+        required: true
+        default: "pkxdshop.id@gmail.com"
+      password:
+        description: "Password bot (ROTASI sesudah tes)"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = bawaan probe)"
+        required: false
+        default: ""
+      pet_id:
+        description: "UUID instance pet yang dihapus (kosong = list-only)"
+        required: false
+        default: ""
+      confirm:
+        description: "Ketik 1 untuk BENAR-BENAR menghapus (selain itu list-only)"
+        required: false
+        default: "0"
+      force:
+        description: "Ketik 1 untuk mengizinkan hapus telur/MAX/spesial"
+        required: false
+        default: "0"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install curl_cffi urllib3
+      - run: python -u pet_delete_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --pet-id "${{ inputs.pet_id }}" --confirm "${{ inputs.confirm }}" --force "${{ inputs.force }}"
+        env:
+          FSTR_APP_KEY: ${{ secrets.FSTR_APP_KEY }}
+          FSTR_APP_SECRET: ${{ secrets.FSTR_APP_SECRET }}
+          PET_RESULT_SECRET: ${{ secrets.PET_RESULT_SECRET }}
