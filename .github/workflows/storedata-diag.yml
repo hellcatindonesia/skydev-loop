@@ -1,0 +1,36 @@
+name: DIAG Store Data HTTPS (1 bot)
+
+# Diag sekali jalan (bukan produksi), READ-ONLY: 1 bot login FASTER ->
+# GET/HEAD kandidat path manifest + JSON toko di kedua host game-store-data,
+# anonim vs Authorization Bearer userToken. TIDAK mengubah apa pun di akun.
+# Dibuat 2026-11-27 atas permintaan Bartes: probe jalur katalog toko lewat
+# HTTPS dengan login, karena probe anonim kena 403 dan toko di akun pkxdshop
+# tidak bisa dibuka di game.
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot"
+        required: true
+      password:
+        description: "Password bot (ROTASI sesudah tes)"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = bawaan probe)"
+        required: false
+        default: ""
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install curl_cffi urllib3
+      - run: python -u storedata_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}"
+        env:
+          FSTR_APP_KEY: ${{ secrets.FSTR_APP_KEY }}
+          FSTR_APP_SECRET: ${{ secrets.FSTR_APP_SECRET }}
