@@ -1,0 +1,50 @@
+name: DIAG Store Tree (1 bot)
+
+# Diag sekali jalan (bukan produksi), READ-ONLY: 1 bot login -> kirim
+# RoomEvent "L"/"L2"/"pet_store_tree"/"PST" dalam beberapa bentuk payload
+# (JSON, string mentah, protobuf) -> catat SEMUA frame balasan mentah.
+# Dibuat 2026-11-27 atas permintaan Bartes: probe jalur katalog toko
+# lewat TCP (mechanic ToxicBirdStoreTreeMechanic), karena jalur HTTPS
+# game-store-data mengembalikan 403 anonim. TIDAK mengubah apa pun di akun.
+# Kontrol: tree id "ugc-builder-in-game-store-1_91_0" (literal dari dump).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot"
+        required: true
+        default: "pkxdshop.id@gmail.com"
+      password:
+        description: "Password bot (ROTASI sesudah tes)"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = bawaan probe)"
+        required: false
+        default: ""
+      tree_ids:
+        description: "Daftar tree id dipisah koma"
+        required: false
+        default: "ugc-builder-in-game-store-1_91_0,ugc-builder-in-game-store"
+      pet_versions:
+        description: "Daftar versi pet store dipisah koma"
+        required: false
+        default: "1_94_0,1_91_0,1.91.0"
+      wait:
+        description: "Detik drain per varian payload"
+        required: false
+        default: "6"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install curl_cffi urllib3
+      - run: python -u storetree_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --tree-ids "${{ inputs.tree_ids }}" --pet-versions "${{ inputs.pet_versions }}" --wait "${{ inputs.wait }}"
+        env:
+          FSTR_APP_KEY: ${{ secrets.FSTR_APP_KEY }}
+          FSTR_APP_SECRET: ${{ secrets.FSTR_APP_SECRET }}
