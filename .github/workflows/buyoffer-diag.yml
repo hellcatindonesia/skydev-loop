@@ -1,0 +1,78 @@
+name: DIAG BuyOffer — beli 1 paket koin/gems via RoomEvent "buy" (1 bot tes)
+
+# Probe BELI PAKET (2026-11-28, Bartes): bot pkxdshop membeli 1 offer
+# dari katalog toko via RoomEvent "buy" (ToxicBirdBuyMechanic).
+# Wire (TERBUKTI via deklarasi dump_3 + BuyResponse):
+# - kirim "buy", balas "d" (BuyResultCommandKey).
+# - BuyOfferRequest: f1 EventId=1 (BuyOffer), f2 OfferId, f3 OfferRevision,
+#   f4 StoreId, f5 OfferGroupId. TANPA harga/jumlah/item — server lookup.
+# - Buy dikirim TEPAT 1x per run; pengaman --confirm 1 wajib di mode live.
+#   Bila respons "d" hilang, JANGAN beli ulang membabi buta — pembelian
+#   mungkin tetap diproses; verifikasi lewat respons/wallet.
+# Jangan echo password di log (jangan set -x, jangan echo input).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email bot pkxdshop"
+        required: true
+      password:
+        description: "Password bot pkxdshop"
+        required: true
+      device_id:
+        description: "Device ID bot (kosong = default probe)"
+        required: false
+        default: ""
+      offer_id:
+        description: "OfferId paket yang dibeli"
+        required: true
+      revision:
+        description: "OfferRevision paket"
+        required: false
+        default: "1"
+      store_id:
+        description: "StoreId toko paket"
+        required: true
+      offer_group_id:
+        description: "OfferGroupId grup paket"
+        required: true
+      confirm:
+        description: "Wajib '1' untuk beli live (pengaman 1x beli)"
+        required: true
+        default: "0"
+      dry_run:
+        description: "true = hanya validasi + cetak payload, tanpa login"
+        required: false
+        default: "false"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          pip install -q aiohttp curl-cffi urllib3
+      - name: Run buydffer probe
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DB_EMAIL: ${{ inputs.email }}
+          DB_PASSWORD: ${{ inputs.password }}
+          DB_DEVICE_ID: ${{ inputs.device_id }}
+          DB_OFFER_ID: ${{ inputs.offer_id }}
+          DB_REVISION: ${{ inputs.revision }}
+          DB_STORE_ID: ${{ inputs.store_id }}
+          DB_OFFER_GROUP_ID: ${{ inputs.offer_group_id }}
+          DB_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -u buyoffer_diag.py --dry-run --offer-id "${{ inputs.offer_id }}" --revision "${{ inputs.revision }}" --store-id "${{ inputs.store_id }}" --offer-group-id "${{ inputs.offer_group_id }}"
+          else
+            python -u buyoffer_diag.py --email "${{ inputs.email }}" --password "${{ inputs.password }}" --device-id "${{ inputs.device_id }}" --offer-id "${{ inputs.offer_id }}" --revision "${{ inputs.revision }}" --store-id "${{ inputs.store_id }}" --offer-group-id "${{ inputs.offer_group_id }}" --confirm "${{ inputs.confirm }}"
+          fi
